@@ -1,11 +1,10 @@
 version: "3.9"
 services:
   orchestrator:
-    build: ./orchestrator
+    build:
+      context: ./orchestrator
     ports:
       - "8000:8000"
-    volumes:
-      - ./orchestrator:/app
     depends_on:
       - llm_interface
       - graph_service
@@ -15,55 +14,60 @@ services:
       - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   llm_interface:
-    build: ./llm_interface
+    build:
+      context: ./llm_interface
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8001:8000"
-    volumes:
-      - ./llm_interface:/app
     depends_on:
       - mongodb
     environment:
       - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   graph_service:
-    build: ./graph_service
+    build:
+      context: ./graph_service
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8002:8000"
-    volumes:
-      - ./graph_service:/app
     depends_on:
       - mongodb
     environment:
       - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   rules_policy_engine:
-    build: ./rules_policy_engine
+    build:
+      context: ./rules_policy_engine
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8003:8000"
-    volumes:
-      - ./rules_policy_engine:/app
     depends_on:
       - mongodb
     environment:
       - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   neural_net_service:
-    build: ./neural_net_service
+    build:
+      context: ./neural_net_service
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8004:8000"
-    volumes:
-      - ./neural_net_service:/app
     depends_on:
       - mongodb
     environment:
       - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   dashboard:
-    build: ./dashboard
+    build:
+      context: ./dashboard
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8005:8501"
-    volumes:
-      - ./dashboard:/app
     depends_on:
       - orchestrator
     environment:
@@ -76,8 +80,6 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD:
-    volumes:
-      - ./data_generator.py:/data_generator.py
     command: >
       bash -c "
       mongosh --host mongodb --port 27017 -u root --authenticationDatabase admin --eval '
@@ -89,6 +91,3 @@ services:
         });' &&
       python /data_generator.py
       "
-
-volumes:
-  mongodb_data_container:

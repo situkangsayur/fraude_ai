@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "llm-interface"
+name = "llm_interface"
 version = "0.1.0"
 description = ""
 authors = ["Hendri Karisma <situkangsayur@gmail.com>"]

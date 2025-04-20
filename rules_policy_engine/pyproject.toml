@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "rules-policy-engine"
+name = "rules_policy_engine"
 version = "0.1.0"
 description = ""
 authors = ["Hendri Karisma <situkangsayur@gmail.com>"]

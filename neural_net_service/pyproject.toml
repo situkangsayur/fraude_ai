@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "neural-net-service"
+name = "neural_net_service"
 version = "0.1.0"
 description = ""
 authors = ["Hendri Karisma <situkangsayur@gmail.com>"]
