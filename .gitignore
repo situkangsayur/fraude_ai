@@ -1,0 +1,88 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info
+dist/
+build/
+sdist/
+wheels/
+*.whl
+MANIFEST.in
+*.pyd
+*.so
+
+# Docker
+*~
+*/~
+# Logs
+*.log
+
+# Virtual Environment
+venv/
+.venv/
+env/
+envs/
+ENV/
+virtualenv/
+_venv/
+__pypackages__/
+
+# VS Code
+.vscode/
+*.code-workspace
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Neovim
+*.swp
+*.swo
+*.backup
+*.un~
+.nvim.swp.*
+Session.vim
+shada/
+
+# JetBrains IDEs (IntelliJ, PyCharm, etc.)
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+build/
+.gradle/
+/target/
+/classes/
+*.app
+*.classpath
+*.DS_Store
+
+# Optional: Include if you use these
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Packages/Installers
+eggs/
+develop-eggs/
+lib64/
+lib/
+parts/
+sdist/
+var/
+*.egg
+.installed.cfg
+*.orig
+*.rej
+.coverage
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+doctest_modules/
+.tox/
+*.tox
+htmlcov/
+.hypothesis/
+.cache

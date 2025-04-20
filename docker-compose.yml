@@ -1,0 +1,94 @@
+version: "3.9"
+services:
+  orchestrator:
+    build: ./orchestrator
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./orchestrator:/app
+    depends_on:
+      - llm_interface
+      - graph_service
+      - rules_policy_engine
+      - neural_net_service
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  llm_interface:
+    build: ./llm_interface
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./llm_interface:/app
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  graph_service:
+    build: ./graph_service
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./graph_service:/app
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  rules_policy_engine:
+    build: ./rules_policy_engine
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./rules_policy_engine:/app
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  neural_net_service:
+    build: ./neural_net_service
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./neural_net_service:/app
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "8005:8501"
+    volumes:
+      - ./dashboard:/app
+    depends_on:
+      - orchestrator
+    environment:
+      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_DB_NAME=fraud_detection
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD:
+    volumes:
+      - ./data_generator.py:/data_generator.py
+    command: >
+      bash -c "
+      mongosh --host mongodb --port 27017 -u root --authenticationDatabase admin --eval '
+        db = db.getSiblingDB(\"fraud_detection\");
+        db.createUser({
+          user: \"fraud_user\",
+          pwd: \"secure_password\",
+          roles: [ { role: \"readWrite\", db: \"fraud_detection\" } ]
+        });' &&
+      python /data_generator.py
+      "
+
+volumes:
+  mongodb_data_container:
