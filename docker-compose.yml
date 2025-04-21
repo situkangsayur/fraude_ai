@@ -3,6 +3,8 @@ services:
   orchestrator:
     build:
       context: ./orchestrator
+      args:
+        PROJECT_VERSION: ${PROJECT_VERSION}
     ports:
       - "8000:8000"
     depends_on:
