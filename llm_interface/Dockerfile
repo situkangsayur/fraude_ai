@@ -1,5 +1,6 @@
 FROM python:3.12-slim-bullseye
 ARG PROJECT_VERSION
+ARG COMMON_VERSION
 
 # Opsional: install build deps dan clean layer untuk slim image
 RUN apt-get update && apt-get install -y curl build-essential \
@@ -29,11 +30,14 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # RUN poetry config virtualenvs.create false && poetry install --no-interaction
 
-COPY dist/llm_interface-${PROJECT_VERSION}.tar.gz .
+# Copy and install the common package first
+COPY ../common/dist/common-${COMMON_VERSION}.tar.gz .
+RUN poetry add /app/common-${COMMON_VERSION}.tar.gz
 
+# Copy and install the main service package (path relative to build context root)
+COPY llm_interface/dist/llm_interface-${PROJECT_VERSION}.tar.gz .
 RUN poetry add /app/llm_interface-${PROJECT_VERSION}.tar.gz
 
 CMD ["poetry", "run", "uvicorn", "llm_interface.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 WORKDIR /app
-

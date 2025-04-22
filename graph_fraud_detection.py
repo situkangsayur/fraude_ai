@@ -1,4 +1,4 @@
-import networkx as nx
+mport networkx as nx
 import json
 from pymongo import MongoClient
 

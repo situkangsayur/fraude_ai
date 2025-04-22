@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   orchestrator:
     build:
@@ -13,7 +12,7 @@ services:
       - rules_policy_engine
       - neural_net_service
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   llm_interface:
     build:
@@ -25,7 +24,7 @@ services:
     depends_on:
       - mongodb
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   graph_service:
     build:
@@ -37,7 +36,7 @@ services:
     depends_on:
       - mongodb
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   rules_policy_engine:
     build:
@@ -49,7 +48,7 @@ services:
     depends_on:
       - mongodb
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   neural_net_service:
     build:
@@ -61,7 +60,7 @@ services:
     depends_on:
       - mongodb
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   dashboard:
     build:
@@ -73,7 +72,7 @@ services:
     depends_on:
       - orchestrator
     environment:
-      - MONGODB_URI=mongodb://root:@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   mongodb:
     image: mongo:latest
