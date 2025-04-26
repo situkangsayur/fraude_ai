@@ -9,14 +9,3 @@ echo "Building llm_interface version ${PROJECT_VERSION} with common version ${CO
 
 # Build the distribution zip file
 poetry build
-
-# Build the Docker image from the parent directory, passing versions as build arguments
-# Use -f to specify the Dockerfile location relative to the build context (parent dir)
-cd .. # Go up to the root directory
-docker build \
-    --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
-    --build-arg COMMON_VERSION=${COMMON_VERSION} \
-    -t llm_interface:${PROJECT_VERSION} \
-    -f llm_interface/Dockerfile \
-    . # Build context is now the root directory
-cd llm_interface # Go back to the original directory (optional, but good practice)

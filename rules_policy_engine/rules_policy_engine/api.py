@@ -8,34 +8,46 @@ from .services import evaluate_policy, determine_risk_level
 policy_router = APIRouter()
 rule_router = APIRouter()
 
+
 @policy_router.post("/policies/", response_model=Dict[str, Any])
-async def create_policy(policy: Policy):
+async def create_policy(policy: Policy, mock_db=None):
     """Creates a new fraud detection policy."""
     try:
-        client = get_mongodb_client(MONGODB_URI)
-        if not client:
-            raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
-        db = get_mongodb_database(client, MONGODB_DB_NAME)
-        if not db:
-            raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
+        print("Creating policy...")
+        db = mock_db
+        if db is None:
+            client = get_mongodb_client(MONGODB_URI)
+            if not client:
+                print("Failed to connect to MongoDB")
+                raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+            db = get_mongodb_database(client, MONGODB_DB_NAME)
+            if db is None:
+                print("Failed to get MongoDB database")
+                raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        policy_data = policy.dict()
+        policy_data = policy.model_dump()
+        print(f"Policy data: {policy_data}")
         # Insert the policy itself
-        result = await db.policies.insert_one(policy_data)
+        result = db.policies.insert_one(policy_data)
         policy_id = result.inserted_id
 
         # Insert the rules into their respective collections
         for rule in policy.rules:
             rule_data = rule.dict()
+            print(f"Rule data: {rule_data}")
             if rule.rule_type == "standard":
-                await db.standard_rule.insert_one(rule_data)
+                db.standard_rule.insert_one(rule_data)
             elif rule.rule_type == "velocity":
-                await db.velocity_rule.insert_one(rule_data)
+                db.velocity_rule.insert_one(rule_data)
 
-        new_policy = await db.policies.find_one({"_id": policy_id})
+        new_policy = db.policies.find_one({"_id": policy_id})
+        print(f"New policy: {new_policy}")
+        new_policy["_id"] = str(new_policy["_id"])
         return new_policy
     except Exception as e:
+        print(f"Exception: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @policy_router.get("/policies/{policy_id}", response_model=Dict[str, Any])
 async def read_policy(policy_id: str):
@@ -54,6 +66,7 @@ async def read_policy(policy_id: str):
         return policy
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @policy_router.put("/policies/{policy_id}", response_model=Dict[str, Any])
 async def update_policy(policy_id: str, policy: Policy):
@@ -75,6 +88,7 @@ async def update_policy(policy_id: str, policy: Policy):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @policy_router.delete("/policies/{policy_id}", response_model=Dict[str, Any])
 async def delete_policy(policy_id: str):
     """Deletes a fraud detection policy by ID."""
@@ -93,29 +107,35 @@ async def delete_policy(policy_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @policy_router.post("/transactions")
-async def process_transaction(transaction: Transaction) -> Dict[str, Any]:
+async def process_transaction(transaction: Transaction, mock_db=None) -> Dict[str, Any]:
     """
     Processes a transaction, evaluates it against the defined policies,
     and updates the user's average risk score.
     """
     try:
-        client = get_mongodb_client(MONGODB_URI)
-        if not client:
-            raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
-        db = get_mongodb_database(client, MONGODB_DB_NAME)
-        if not db:
-            raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
+        if mock_db:
+            client = mock_db.client
+            db = mock_db
+        else:
+            client = get_mongodb_client(MONGODB_URI, mock_db)
+            if not client:
+                raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+            db = get_mongodb_database(client, MONGODB_DB_NAME)
+            if db is None:
+                raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
         # Convert transaction to a dict for evaluation
         transaction_data = transaction.dict()
 
-        policies = await db.policies.find().to_list(length=None)
+        policies = []
         total_risk_points = 0
-        for policy in policies:
-            total_risk_points += evaluate_policy(transaction_data, policy)
-
-        # Determine risk level
+        cursor = db.policies.find()
+        for policy in cursor:
+            total_risk_points += await evaluate_policy(transaction_data, policy)
+    
+            # Determine risk level
         risk_level = determine_risk_level(total_risk_points)
 
         # Update user's average score (placeholder)
@@ -132,6 +152,7 @@ async def process_transaction(transaction: Transaction) -> Dict[str, Any]:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @rule_router.get("/rule_statistics/", response_model=Dict[str, Any])
 async def get_rule_statistics():
@@ -154,6 +175,7 @@ async def get_rule_statistics():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @rule_router.get("/users/{user_id}/risk_info", response_model=Dict[str, Any])
 async def get_user_risk_info(user_id: str):
     """
@@ -175,6 +197,7 @@ async def get_user_risk_info(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # Standard Rule CRUD operations
 @rule_router.post("/standard_rules/", response_model=Dict[str, Any])
 async def create_standard_rule(rule: StandardRule):
@@ -194,6 +217,7 @@ async def create_standard_rule(rule: StandardRule):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @rule_router.get("/standard_rules/{rule_id}", response_model=Dict[str, Any])
 async def read_standard_rule(rule_id: str):
     """Reads a standard rule by ID."""
@@ -211,6 +235,7 @@ async def read_standard_rule(rule_id: str):
         return rule
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @rule_router.put("/standard_rules/{rule_id}", response_model=Dict[str, Any])
 async def update_standard_rule(rule_id: str, rule: StandardRule):
@@ -232,6 +257,7 @@ async def update_standard_rule(rule_id: str, rule: StandardRule):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @rule_router.delete("/standard_rules/{rule_id}", response_model=Dict[str, Any])
 async def delete_standard_rule(rule_id: str):
     """Deletes a standard rule by ID."""
@@ -249,6 +275,7 @@ async def delete_standard_rule(rule_id: str):
         return {"message": "Rule deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # Velocity Rule CRUD operations
 @rule_router.post("/velocity_rules/", response_model=Dict[str, Any])
@@ -269,6 +296,7 @@ async def create_velocity_rule(rule: VelocityRule):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @rule_router.get("/velocity_rules/{rule_id}", response_model=Dict[str, Any])
 async def read_velocity_rule(rule_id: str):
     """Reads a velocity rule by ID."""
@@ -286,6 +314,7 @@ async def read_velocity_rule(rule_id: str):
         return rule
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @rule_router.put("/velocity_rules/{rule_id}", response_model=Dict[str, Any])
 async def update_velocity_rule(rule_id: str, rule: VelocityRule):
@@ -306,6 +335,7 @@ async def update_velocity_rule(rule_id: str, rule: VelocityRule):
         return updated_rule
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @rule_router.delete("/velocity_rules/{rule_id}", response_model=Dict[str, Any])
 async def delete_velocity_rule(rule_id: str):

@@ -1,7 +1,7 @@
 import os
 
 # MongoDB Configuration
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://root:@localhost:27017/?authSource=admin")
+MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://root:root@localhost:27017/?authSource=admin")
 MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "fraud_detection")
 
 # LLM Configuration

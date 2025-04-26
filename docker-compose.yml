@@ -1,9 +1,12 @@
 services:
   orchestrator:
     build:
-      context: ./orchestrator
+      context: .
+      dockerfile: ./orchestrator/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: orchestrator
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
       - "8000:8000"
     depends_on:
@@ -12,67 +15,86 @@ services:
       - rules_policy_engine
       - neural_net_service
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   llm_interface:
     build:
-      context: ./llm_interface
+      context: .
+      dockerfile: ./llm_interface/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: llm_interface
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
       - "8001:8000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   graph_service:
     build:
-      context: ./graph_service
+      context: .
+      dockerfile: ./graph_service/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: graph_service
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
       - "8002:8000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   rules_policy_engine:
     build:
-      context: ./rules_policy_engine
+      context: .
+      dockerfile: ./rules_policy_engine/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: rules_policy_engine
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
       - "8003:8000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   neural_net_service:
     build:
-      context: ./neural_net_service
+      context: .
+      dockerfile: ./neural_net_service/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: neural_net_service
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
       - "8004:8000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   dashboard:
     build:
-      context: ./dashboard
+      context: .
+      dockerfile: ./dashboard/Dockerfile
       args:
-        PROJECT_VERSION: ${PROJECT_VERSION}
+        PROJECT_NAME: dashboard
+        PROJECT_VERSION: ${PROJECT_VERSION:-0.1.0}
+        COMMON_VERSION: ${COMMON_VERSION:-0.1.0}
     ports:
-      - "8005:8501"
+      - "8501:8501" # Corrected internal port for Streamlit
     depends_on:
       - orchestrator
     environment:
-      - MONGODB_URI=mongodb://root@mongodb:27017/?authSource=admin
+      - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
   mongodb:
     image: mongo:latest
@@ -80,15 +102,9 @@ services:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD:
-    command: >
-      bash -c "
-      mongosh --host mongodb --port 27017 -u root --authenticationDatabase admin --eval '
-        db = db.getSiblingDB(\"fraud_detection\");
-        db.createUser({
-          user: \"fraud_user\",
-          pwd: \"secure_password\",
-          roles: [ { role: \"readWrite\", db: \"fraud_detection\" } ]
-        });' &&
-      python /data_generator.py
-      "
+      MONGO_INITDB_ROOT_PASSWORD: root
+    healthcheck:
+      test: mongosh --host mongodb --port 27017 -u root --authenticationDatabase admin --eval "db.runCommand('ping').ok"
+      interval: 10s
+      timeout: 5s
+      retries: 5

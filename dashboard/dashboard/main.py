@@ -11,7 +11,7 @@ st.title("Fraud Detection Dashboard")
 API_BASE_URL = "http://orchestrator:8000"  # Assuming orchestrator service is named 'orchestrator'
 
 # --- Functions to fetch data from APIs ---
-def get_fraud_check(transaction_id: str) -> Dict[str, Any]:
+async def get_fraud_check(transaction_id: str) -> Dict[str, Any]:
     try:
         async def fetch_data():
             async with httpx.AsyncClient() as client:
@@ -19,7 +19,7 @@ def get_fraud_check(transaction_id: str) -> Dict[str, Any]:
                 response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
                 return response.json()
 
-        return asyncio.run(fetch_data())  # Run the async function synchronously
+        return await fetch_data()  # Run the async function synchronously
     except httpx.HTTPStatusError as e:
         st.error(f"HTTP error fetching fraud check for transaction {transaction_id}: {e}")
         return None

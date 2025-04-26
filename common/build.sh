@@ -11,6 +11,6 @@ rm -rf dist
 mkdir -p dist
 
 # Build the package
-poetry build
+cd common && poetry build && cd ..
 
 echo "Common package build complete: dist/common-${PROJECT_VERSION}.tar.gz"

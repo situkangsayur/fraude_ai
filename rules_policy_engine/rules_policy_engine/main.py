@@ -1,3 +1,5 @@
+import os
+import mongomock
 from fastapi import FastAPI
 from common.config import MONGODB_URI, MONGODB_DB_NAME
 from common.mongodb_utils import get_mongodb_client, get_mongodb_database
@@ -9,11 +11,15 @@ app.include_router(policy_router)
 app.include_router(rule_router)
 
 @app.on_event("startup")
+
 async def startup_event():
-    client = get_mongodb_client(MONGODB_URI)
-    if not client:
-        print("Failed to connect to MongoDB")
-        return
+    if os.environ.get("TESTING") == "True":
+        client = mongomock.MongoClient()
+    else:
+        client = get_mongodb_client(MONGODB_URI)
+        if not client:
+            print("Failed to connect to MongoDB")
+            return
 
     db = get_mongodb_database(client, MONGODB_DB_NAME)
     if not db:

@@ -9,10 +9,18 @@ readme = "README.md"
 python = "^3.12"
 fastapi = "^0.115.12"
 uvicorn = "^0.34.2"
-pymongo = "^4.12.0"
+pymongo = {extras = ["bson"], version = "^4.12.0"}
 pydantic = "^2.11.3"
 pytest = "^8.0.0"
-pymongo = "^4.12.0"
+httpx = "^0.28.1"
+python-dotenv = "^1.1.0"
+mongomock = "^4.3.0"
+pytest-asyncio = "^0.26.0"
+common = {path = "../common/dist/common-0.1.0-py3-none-any.whl"}
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
 
 
 [build-system]

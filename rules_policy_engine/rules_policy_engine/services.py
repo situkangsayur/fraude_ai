@@ -105,16 +105,18 @@ async def evaluate_velocity_rule(transaction, rule: VelocityRule) -> bool:
     finally:
         client.close()
 
-def evaluate_policy(transaction, policy: Policy) -> int:
+async def evaluate_policy(transaction, policy: Policy) -> int:
     """Evaluates a transaction against a policy and returns the total risk points."""
     total_points = 0
-    for rule in policy.rules:
-        if rule.rule_type == RuleType.STANDARD:
-            if evaluate_standard_rule(transaction, rule):
-                total_points += rule.points
-        elif rule.rule_type == RuleType.VELOCITY:
-            if evaluate_velocity_rule(transaction, rule):
-                total_points += rule.points
+    for rule in policy.get("rules", []):
+        if rule.get("rule_type") == "standard":
+            standard_rule = StandardRule(**rule)
+            if evaluate_standard_rule(transaction, standard_rule):
+                total_points += rule.get("points", 0)
+        elif rule.get("rule_type") == "velocity":
+            velocity_rule = VelocityRule(**rule)
+            if await evaluate_velocity_rule(transaction, velocity_rule):
+                total_points += rule.get("points", 0)
     return total_points
 
 def determine_risk_level(total_risk_points: int) -> str:

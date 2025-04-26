@@ -5,6 +5,3 @@ PROJECT_VERSION=$(grep "^version = " pyproject.toml | cut -d'"' -f2)
 
 # Build the distribution zip file
 poetry build
-
-# Build the Docker image
-docker build -t neural_net_service .

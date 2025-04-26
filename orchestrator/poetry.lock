@@ -69,6 +69,25 @@ files = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+description = ""
+optional = false
+python-versions = ">=3.12,<4.0"
+files = [
+    {file = "common-0.1.0.tar.gz", hash = "sha256:693827da362a3aa4c09fafe262cfb17bcf687f8720a531bf52854f6aea9d6a36"},
+]
+
+[package.dependencies]
+httpx = ">=0.28.1,<0.29.0"
+pydantic = ">=2.11.3,<3.0.0"
+pymongo = ">=4.12.0,<5.0.0"
+
+[package.source]
+type = "file"
+url = "../common/dist/common-0.1.0.tar.gz"
+
+[[package]]
 name = "dnspython"
 version = "2.7.0"
 description = "DNS toolkit"
@@ -463,4 +482,4 @@ standard = ["colorama (>=0.4)", "httptools (>=0.6.3)", "python-dotenv (>=0.13)",
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "f41713706b7d1b2d11377773bb322c9c5f0515e1322fbaf200936840d14fffb4"
+content-hash = "85ffe896f5dcf630c227ced98659803a8d9f479c7ef665dc1f0368e02e1e869a"
