@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from typing import Dict, Any, List, Optional
-from .models import UserNode, GraphRule, Link
+from .models import UserNode, GraphRule, Link, Cluster
 from .services import (
     initialize_graph_db,
     create_user_service,

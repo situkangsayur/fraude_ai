@@ -13,7 +13,7 @@ class UserNode(BaseModel):
     address_kecamatan: str
     phone_number: str
     is_fraud: bool = False
-    _id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id")
 
 class GraphRule(BaseModel):
     name: str
@@ -22,7 +22,7 @@ class GraphRule(BaseModel):
     operator: str  # e.g., "equal", "greater_than", "contains"
     field2: Optional[str] = None  # Optional, for comparing two fields
     value: Optional[str] = None  # Optional, for comparing with a fixed value
-    _id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id")
 
 class Link(BaseModel):
     source: str
@@ -31,9 +31,9 @@ class Link(BaseModel):
     weight: float = 1.0
     reasons: List[str] = []
     rule_ids: List[str] = []
-    _id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id")
 
 class Cluster(BaseModel):
     cluster_id: str
     members: List[str]
-    _id: Optional[str] = Field(None, alias="_id")
+    id: Optional[str] = Field(None, alias="_id")

@@ -108,18 +108,22 @@ async def create_user_service(user: UserNode) -> Dict[str, Any]:
     """
     Creates a new user node in the graph and MongoDB.
     """
-    user_data = user.model_dump()
+    user_data = user.model_dump(by_alias=True) # Use by_alias=True to get the dictionary with the alias name
     # Ensure id_user is unique
     if db.users.find_one({"id_user": user_data["id_user"]}):
         raise HTTPException(status_code=400, detail="User with this ID already exists")
-    db.users.insert_one(user_data)
-    node_id = user_data['id_user']
-    graph.add_node(node_id, **user_data)
+    result = db.users.insert_one(user_data)
+    # Fetch the inserted document to get the ObjectId
+    new_user = db.users.find_one({"_id": result.inserted_id})
+
+    node_id = new_user['id_user']
+    graph.add_node(node_id, **new_user)
     # Trigger clustering after adding a new user
     await cluster_nodes_service()
-    # Convert ObjectId to string for response
-    user_data['_id'] = str(user_data['_id'])
-    return user_data
+    # Convert ObjectId to string for response and rename _id to id
+    if new_user and '_id' in new_user:
+        new_user['id'] = str(new_user.pop('_id'))
+    return new_user
 
 async def read_user_service(user_id: str) -> Dict[str, Any]:
     """
@@ -129,29 +133,36 @@ async def read_user_service(user_id: str) -> Dict[str, Any]:
     if user_data is None:
         raise HTTPException(status_code=404, detail="User not found")
     # Convert ObjectId to string for response
-    user_data['_id'] = str(user_data['_id'])
+    if '_id' in user_data:
+        user_data['id'] = str(user_data.pop('_id'))
     return user_data
 
 async def update_user_service(user_id: str, user: UserNode) -> Dict[str, Any]:
     """
     Updates a user node by ID in MongoDB.
     """
-    user_data = user.model_dump()
+    user_data = user.model_dump(by_alias=True, exclude_unset=True) # Use by_alias=True and exclude_unset=True
     result = db.users.update_one({"id_user": user_id}, {"$set": user_data})
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    updated_user = db.users.find_one({"id_user": user_id})
+        # Check if the user exists with the given ID but no changes were made
+        if db.users.find_one({"id_user": user_id}) is None:
+             raise HTTPException(status_code=404, detail="User not found")
+        # If user exists but no changes, return the existing user
+        updated_user = db.users.find_one({"id_user": user_id})
+    else:
+        updated_user = db.users.find_one({"id_user": user_id}) # Fetch the updated document
+
     # Update the node in the graph
-    if user_id in graph:
+    if user_id in graph and updated_user:
         # Ensure _id is not added to graph node attributes as ObjectId
         updated_user_for_graph = updated_user.copy()
         if '_id' in updated_user_for_graph:
             del updated_user_for_graph['_id']
         graph.nodes[user_id].update(updated_user_for_graph)
 
-    # Convert ObjectId to string for response
-    if updated_user:
-        updated_user['_id'] = str(updated_user['_id'])
+    # Convert ObjectId to string for response and rename _id to id
+    if updated_user and '_id' in updated_user:
+        updated_user['id'] = str(updated_user.pop('_id'))
     return updated_user
 
 async def delete_user_service(user_id: str) -> Dict[str, Any]:
@@ -176,7 +187,7 @@ async def create_link_service(link: Link) -> Dict[str, Any]:
     """
     Creates a new link in the graph and MongoDB.
     """
-    link_data = link.model_dump()
+    link_data = link.model_dump(by_alias=True) # Use by_alias=True
     # Ensure link doesn't already exist (simple check based on source and target)
     if db.links.find_one({"source": link_data["source"], "target": link_data["target"]}) or db.links.find_one({"source": link_data["target"], "target": link_data["source"]}):
          raise HTTPException(status_code=400, detail="Link between these users already exists")
@@ -186,9 +197,9 @@ async def create_link_service(link: Link) -> Dict[str, Any]:
     new_link = db.links.find_one({"_id": result.inserted_id})
 
     graph.add_edge(new_link['source'], new_link['target'], weight=new_link['weight'], type=new_link['type'], reasons=new_link.get('reasons', []), rule_ids=new_link.get('rule_ids', []))
-    # Convert ObjectId to string for response
-    if new_link:
-        new_link['_id'] = str(new_link['_id'])
+    # Convert ObjectId to string for response and rename _id to id
+    if new_link and '_id' in new_link:
+        new_link['id'] = str(new_link.pop('_id'))
     return new_link
 
 async def read_link_service(source_id: str, target_id: str) -> Dict[str, Any]:
@@ -198,8 +209,9 @@ async def read_link_service(source_id: str, target_id: str) -> Dict[str, Any]:
     link_data = db.links.find_one({"source": source_id, "target": target_id})
     if link_data is None:
         raise HTTPException(status_code=404, detail="Link not found")
-    # Convert ObjectId to string for response
-    link_data['_id'] = str(link_data['_id'])
+    # Convert ObjectId to string for response and rename _id to id
+    if '_id' in link_data:
+        link_data['id'] = str(link_data.pop('_id'))
     return link_data
 
 async def delete_link_service(source_id: str, target_id: str) -> Dict[str, Any]:
@@ -243,7 +255,7 @@ async def generate_links_service() -> Dict[str, Any]:
                     triggered_rules_details.append({
                         "name": rule['name'],
                         "description": rule['description'],
-                        "rule_id": str(rule['_id'])
+                        "rule_id": str(rule['_id']) if '_id' in rule else None
                     })
 
             # Apply distance metrics (example using address_zip)
@@ -278,67 +290,74 @@ async def create_graph_rule_service(rule: GraphRule) -> Dict[str, Any]:
     """
     Creates a new graph rule in MongoDB.
     """
-    rule_data = rule.model_dump()
+    rule_data = rule.model_dump(by_alias=True) # Use by_alias=True
     result = db.graph_rules.insert_one(rule_data)
     new_rule = db.graph_rules.find_one({"_id": result.inserted_id})
-    # Convert ObjectId to string for response
-    if new_rule:
-        new_rule['_id'] = str(new_rule['_id'])
+    # Convert ObjectId to string for response and rename _id to id
+    if new_rule and '_id' in new_rule:
+        new_rule['id'] = str(new_rule.pop('_id'))
     return new_rule
 
 async def read_graph_rule_service(rule_id: str) -> Dict[str, Any]:
     """
     Reads a graph rule by ID from MongoDB.
     """
-    try:
-        # Convert rule_id string to ObjectId
-        rule_object_id = ObjectId(rule_id)
-        rule = db.graph_rules.find_one({"_id": rule_object_id})
-        if rule is None:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        # Convert ObjectId to string for response
-        rule['_id'] = str(rule['_id'])
-        return rule
-    except Exception:
+    # Check if rule_id is a valid ObjectId format first
+    if not ObjectId.is_valid(rule_id):
         raise HTTPException(status_code=400, detail="Invalid rule ID format")
+
+    rule_object_id = ObjectId(rule_id)
+    rule = db.graph_rules.find_one({"_id": rule_object_id})
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Graph rule not found")
+    # Convert ObjectId to string for response and rename _id to id
+    if '_id' in rule:
+        rule['id'] = str(rule.pop('_id'))
+    return rule
 
 
 async def update_graph_rule_service(rule_id: str, rule: GraphRule) -> Dict[str, Any]:
     """
     Updates a graph rule by ID in MongoDB.
     """
-    try:
-        # Convert rule_id string to ObjectId
-        rule_object_id = ObjectId(rule_id)
-        rule_data = rule.model_dump()
-        result = db.graph_rules.update_one({"_id": rule_object_id}, {"$set": rule_data})
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        updated_rule = db.graph_rules.find_one({"_id": rule_object_id})
-         # Convert ObjectId to string for response
-        if updated_rule:
-            updated_rule['_id'] = str(updated_rule['_id'])
-        return updated_rule
-    except Exception:
+    # Check if rule_id is a valid ObjectId format first
+    if not ObjectId.is_valid(rule_id):
         raise HTTPException(status_code=400, detail="Invalid rule ID format")
+
+    rule_object_id = ObjectId(rule_id)
+    rule_data = rule.model_dump(by_alias=True, exclude_unset=True) # Use by_alias=True and exclude_unset=True
+    result = db.graph_rules.update_one({"_id": rule_object_id}, {"$set": rule_data})
+    if result.modified_count == 0:
+        # Check if the rule exists with the given ID but no changes were made
+        if db.graph_rules.find_one({"_id": rule_object_id}) is None:
+             raise HTTPException(status_code=404, detail="Graph rule not found")
+        # If rule exists but no changes, return the existing rule
+        updated_rule = db.graph_rules.find_one({"_id": rule_object_id})
+    else:
+        updated_rule = db.graph_rules.find_one({"_id": rule_object_id}) # Fetch the updated document
+
+    # Convert ObjectId to string for response and rename _id to id
+    if updated_rule and '_id' in updated_rule:
+        updated_rule['id'] = str(updated_rule.pop('_id'))
+    return updated_rule
 
 async def delete_graph_rule_service(rule_id: str) -> Dict[str, Any]:
     """
     Deletes a graph rule by ID from MongoDB.
     """
-    try:
-        # Convert rule_id string to ObjectId
-        rule_object_id = ObjectId(rule_id)
-        result = db.graph_rules.delete_one({"_id": rule_object_id})
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        # Also remove any links created by this rule
-        db.links.delete_many({"rule_ids": rule_id}) # Assuming rule_ids is a list
-        # Need to rebuild the graph or remove edges from the graph based on the deleted rule
-        # For simplicity, we'll just return success here. Rebuilding the graph on rule deletion might be complex.
-        return {"message": "Graph rule deleted successfully"}
-    except Exception:
+    # Check if rule_id is a valid ObjectId format first
+    if not ObjectId.is_valid(rule_id):
         raise HTTPException(status_code=400, detail="Invalid rule ID format")
+
+    rule_object_id = ObjectId(rule_id)
+    result = db.graph_rules.delete_one({"_id": rule_object_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Graph rule not found")
+    # Also remove any links created by this rule
+    db.links.delete_many({"rule_ids": rule_id}) # Assuming rule_ids is a list
+    # Need to rebuild the graph or remove edges from the graph based on the deleted rule
+    # For simplicity, we'll just return success here. Rebuilding the graph on rule deletion might be complex.
+    return {"message": "Graph rule deleted successfully"}
 
 async def analyze_transaction_service(transaction_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -497,16 +516,17 @@ async def cluster_nodes_service() -> Dict[str, Any]:
 
 
     # Save clusters to MongoDB
-    for cluster_id, members in clusters.items():
-        # Use a more stable cluster ID, e.g., based on a hash of sorted members or the first member's ID
-        # For simplicity, let's use the first member's ID if available, otherwise generate one
-        stable_cluster_id = list(members)[0] if members else f"cluster_{cluster_id_counter}"
+    for cluster_key, members in clusters.items():
+        # Use a consistent ID for the cluster, e.g., based on the sorted list of members
+        # Or, if using the seeded cluster logic, use a key derived from that.
+        # For simplicity, let's use a generated ID for now and store the members.
+        # A more robust approach would be to use a hash of sorted members or a representative member ID.
         cluster_doc = {
-            "cluster_id": stable_cluster_id,
+            "cluster_id": f"cluster_{cluster_id_counter}",
             "members": list(members)
         }
         db.clusters.insert_one(cluster_doc)
-        cluster_id_counter += 1 # Still increment for unique fallback IDs if needed
+        cluster_id_counter += 1
 
     return {"message": "Nodes clustered successfully"}
 
@@ -527,8 +547,9 @@ async def get_cluster_by_id_service(cluster_id: str) -> Dict[str, Any]:
     cluster = db.clusters.find_one({"cluster_id": cluster_id})
     if cluster is None:
         raise HTTPException(status_code=404, detail="Cluster not found")
-    # Convert ObjectId to string for response
-    cluster['_id'] = str(cluster['_id'])
+    # Convert ObjectId to string for response and rename _id to id
+    if '_id' in cluster:
+        cluster['id'] = str(cluster.pop('_id'))
     return cluster
 
 async def get_all_links_service() -> List[Dict[str, Any]]:
