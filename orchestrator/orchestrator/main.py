@@ -95,6 +95,91 @@ async def read_policy(policy_id: str):
         return response.json()
 
 # Add more endpoints for creating, updating, and deleting policies
+@app.post("/policies/")
+async def create_policy(policy_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.post("http://rules_policy_engine:8003/policies/", json=policy_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.put("/policies/{policy_id}")
+async def update_policy(policy_id: str, policy_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.put(f"http://rules_policy_engine:8003/policies/{policy_id}", json=policy_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.delete("/policies/{policy_id}")
+async def delete_policy(policy_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"http://rules_policy_engine:8003/policies/{policy_id}")
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.post("/transactions")
+async def process_transaction(transaction_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.post("http://rules_policy_engine:8003/transactions", json=transaction_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+# --- API Endpoints for Rule Management ---
+@app.post("/standard_rules/")
+async def create_standard_rule(rule_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.post("http://rules_policy_engine:8003/standard_rules/", json=rule_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.get("/standard_rules/{rule_id}")
+async def read_standard_rule(rule_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"http://rules_policy_engine:8003/standard_rules/{rule_id}")
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.put("/standard_rules/{rule_id}")
+async def update_standard_rule(rule_id: str, rule_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.put(f"http://rules_policy_engine:8003/standard_rules/{rule_id}", json=rule_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.delete("/standard_rules/{rule_id}")
+async def delete_standard_rule(rule_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"http://rules_policy_engine:8003/standard_rules/{rule_id}")
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.post("/velocity_rules/")
+async def create_velocity_rule(rule_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.post("http://rules_policy_engine:8003/velocity_rules/", json=rule_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.get("/velocity_rules/{rule_id}")
+async def read_velocity_rule(rule_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"http://rules_policy_engine:8003/velocity_rules/{rule_id}")
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.put("/velocity_rules/{rule_id}")
+async def update_velocity_rule(rule_id: str, rule_data: Dict[str, Any]):
+    async with httpx.AsyncClient() as client:
+        response = await client.put(f"http://rules_policy_engine:8003/velocity_rules/{rule_id}", json=rule_data)
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
+@app.delete("/velocity_rules/{rule_id}")
+async def delete_velocity_rule(rule_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"http://rules_policy_engine:8003/velocity_rules/{rule_id}")
+        response.raise_for_status() # Raise an exception for bad status codes
+        return response.json()
+
 
 # --- API Endpoints for Graph Management ---
 @app.get("/graph_rules/")

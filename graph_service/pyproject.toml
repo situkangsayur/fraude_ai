@@ -12,7 +12,8 @@ uvicorn = "^0.34.2"
 networkx = "^3.4.2"
 pymongo = "^4.12.0"
 common = {path = "../common/dist/common-0.1.0.tar.gz"}
-
+pytest = "^8.2.2"
+mongomock = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]

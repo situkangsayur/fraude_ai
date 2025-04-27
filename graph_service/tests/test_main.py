@@ -1,0 +1,511 @@
+import pytest
+from fastapi.testclient import TestClient
+from mongomock import MongoClient as MockMongoClient
+from graph_service.main import app
+from graph_service.models import UserNode, GraphRule, Link
+from graph_service.services import initialize_graph_db, graph, db # Import graph and db from services
+from common.config import MONGODB_DB_NAME
+import networkx as nx
+from unittest.mock import patch, AsyncMock # Import AsyncMock
+import random
+import string
+
+# Mock MongoDB client and database
+@pytest.fixture(scope="function")
+def mock_db():
+    client = MockMongoClient()
+    db = client[MONGODB_DB_NAME]
+    # Clear collections before each test
+    db.users.delete_many({})
+    db.links.delete_many({})
+    db.graph_rules.delete_many({})
+    return db
+
+# Override the dependency to use the mock database
+# Override the dependency to use the mock database
+# We need to mock the functions that the service layer uses to get the client and database
+# Since initialize_graph_db is now responsible for setting the global db, we can mock that.
+# However, the tests directly use mock_db fixture, so we need to ensure the service functions
+# use this mock_db. This requires modifying the service functions or mocking them.
+# A simpler approach for testing the API layer is to mock the service functions themselves.
+
+# We will mock the service functions that interact with the database and graph
+# and ensure they use the mock_db provided by the fixture.
+
+client = TestClient(app)
+
+def generate_random_string(length):
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(length))
+
+def generate_user_data(is_fraud=False):
+    return {
+        "id_user": f"user_{generate_random_string(5)}",
+        "nama_lengkap": f"Nama {generate_random_string(7)}",
+        "email": f"{generate_random_string(5)}@{generate_random_string(5)}.com",
+        "domain_email": f"{generate_random_string(5)}.com",
+        "address": f"Address {generate_random_string(10)}",
+        "address_zip": str(random.randint(10000, 99999)),
+        "address_city": f"City {generate_random_string(5)}",
+        "address_province": f"Province {generate_random_string(5)}",
+        "address_kecamatan": f"Kecamatan {generate_random_string(5)}",
+        "phone_number": f"08{random.randint(100000000, 999999999)}",
+        "is_fraud": is_fraud
+    }
+
+def seed_data(db):
+    # Seed normal users (30)
+    normal_users = [generate_user_data(is_fraud=False) for _ in range(30)]
+    db.users.insert_many(normal_users)
+
+    # Seed fraud users (10) in 4 clusters
+    fraud_users = []
+    for i in range(4): # 4 clusters
+        cluster_size = 2 if i < 2 else 3 # Two clusters of 2, two of 3 (total 4 + 6 = 10)
+        common_domain = f"fraudcluster{i}.com"
+        common_zip = str(10000 + i)
+        for j in range(cluster_size):
+            user_data = generate_user_data(is_fraud=True)
+            user_data["domain_email"] = common_domain
+            user_data["address_zip"] = common_zip
+            fraud_users.append(user_data)
+    db.users.insert_many(fraud_users)
+
+    # Add some graph rules for link generation
+    rules = [
+        {"name": "email_domain_match", "description": "Matching email domains", "field1": "domain_email", "operator": "equal"},
+        {"name": "zip_code_match_rule", "description": "Matching address zip codes", "field1": "address_zip", "operator": "equal"},
+    ]
+    db.graph_rules.insert_many(rules)
+
+    # Generate links based on seeded data and rules
+    # This logic should ideally be in the service, but for testing, we can simulate it here
+    # Find users with matching email domains or zip codes and create links
+    all_users = list(db.users.find())
+    links_to_create = []
+    for i in range(len(all_users)):
+        for j in range(i + 1, len(all_users)):
+            user1 = all_users[i]
+            user2 = all_users[j]
+
+            # Check email domain match rule
+            if user1.get("domain_email") and user1["domain_email"] == user2.get("domain_email"):
+                 # Avoid creating duplicate links
+                if not db.links.find_one({"source": user1['id_user'], "target": user2['id_user'], "type": "email_domain_match"}) and \
+                   not db.links.find_one({"source": user2['id_user'], "target": user1['id_user'], "type": "email_domain_match"}):
+                    links_to_create.append({
+                        "source": user1['id_user'],
+                        "target": user2['id_user'],
+                        "type": "email_domain_match",
+                        "weight": 0.5, # Example weight
+                        "reason": "Matching email domains"
+                    })
+
+            # Check zip code match rule
+            if user1.get("address_zip") and user1["address_zip"] == user2.get("address_zip"):
+                 # Avoid creating duplicate links
+                if not db.links.find_one({"source": user1['id_user'], "target": user2['id_user'], "type": "zip_code_match_rule"}) and \
+                   not db.links.find_one({"source": user2['id_user'], "target": user1['id_user'], "type": "zip_code_match_rule"}):
+                    links_to_create.append({
+                        "source": user1['id_user'],
+                        "target": user2['id_user'],
+                        "type": "zip_code_match_rule",
+                        "weight": 0.7, # Example weight
+                        "reason": "Matching address zip codes"
+                    })
+
+    if links_to_create:
+        db.links.insert_many(links_to_create)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def setup_and_seed_db(mock_db):
+    seed_data(mock_db)
+    # Patch the global db and graph objects in the services module
+    with patch('graph_service.services.db', mock_db), \
+         patch('graph_service.services.graph', nx.Graph()) as mock_graph:
+        # Manually load data into the mocked graph for tests that directly check graph state
+        for node_data in mock_db.users.find():
+            mock_graph.add_node(node_data['id_user'], **node_data)
+        for link_data in mock_db.links.find():
+            mock_graph.add_edge(link_data['source'], link_data['target'], weight=link_data['weight'], type=link_data['type'], reasons=link_data.get('reasons', []), rule_ids=link_data.get('rule_ids', []))
+        yield mock_db
+
+def test_create_user(mock_db):
+    user_data = generate_user_data()
+    response = client.post("/users/", json=user_data)
+    assert response.status_code == 200
+    created_user = response.json()
+    assert created_user['id_user'] == user_data['id_user']
+    assert mock_db.users.find_one({"id_user": user_data['id_user']}) is not None
+    assert user_data['id_user'] in app.graph.nodes
+
+def test_create_user_duplicate_id(mock_db):
+    user_data = generate_user_data()
+    client.post("/users/", json=user_data) # Create the user first
+    response = client.post("/users/", json=user_data) # Attempt to create again
+    assert response.status_code == 400
+    assert "User with this ID already exists" in response.json()["detail"]
+
+def test_read_user(mock_db):
+    user_data = generate_user_data()
+    mock_db.users.insert_one(user_data)
+    response = client.get(f"/users/{user_data['id_user']}")
+    assert response.status_code == 200
+    read_user = response.json()
+    assert read_user['id_user'] == user_data['id_user']
+
+def test_read_user_not_found():
+    response = client.get("/users/non_existent_user")
+    assert response.status_code == 404
+    assert "User not found" in response.json()["detail"]
+
+def test_update_user(mock_db):
+    user_data = generate_user_data()
+    mock_db.users.insert_one(user_data)
+    updated_data = user_data.copy()
+    updated_data['nama_lengkap'] = "Updated Name"
+    response = client.put(f"/users/{user_data['id_user']}", json=updated_data)
+    assert response.status_code == 200
+    updated_user = response.json()
+    assert updated_user['nama_lengkap'] == "Updated Name"
+    db_user = mock_db.users.find_one({"id_user": user_data['id_user']})
+    assert db_user['nama_lengkap'] == "Updated Name"
+    assert app.graph.nodes[user_data['id_user']]['nama_lengkap'] == "Updated Name"
+
+def test_update_user_not_found():
+    user_data = generate_user_data()
+    response = client.put("/users/non_existent_user", json=user_data)
+    assert response.status_code == 404
+    assert "User not found" in response.json()["detail"]
+
+def test_delete_user(mock_db):
+    user_data = generate_user_data()
+    mock_db.users.insert_one(user_data)
+    # Add a link to the user to test link deletion
+    link_data = {"source": user_data['id_user'], "target": "another_user", "type": "test_link"}
+    mock_db.links.insert_one(link_data)
+    app.graph.add_node("another_user")
+    app.graph.add_edge(link_data['source'], link_data['target'], **link_data)
+
+    response = client.delete(f"/users/{user_data['id_user']}")
+    assert response.status_code == 200
+    assert "User deleted successfully" in response.json()["message"]
+    assert mock_db.users.find_one({"id_user": user_data['id_user']}) is None
+    assert user_data['id_user'] not in app.graph.nodes
+    assert mock_db.links.find_one({"source": user_data['id_user']}) is None
+    assert mock_db.links.find_one({"target": user_data['id_user']}) is None
+    assert not app.graph.has_edge(link_data['source'], link_data['target'])
+
+def test_delete_user_not_found():
+    response = client.delete("/users/non_existent_user")
+    assert response.status_code == 404
+    assert "User not found" in response.json()["detail"]
+
+def test_create_link(mock_db):
+    user1_data = generate_user_data()
+    user2_data = generate_user_data()
+    mock_db.users.insert_one(user1_data)
+    mock_db.users.insert_one(user2_data)
+    app.graph.add_node(user1_data['id_user'], **user1_data)
+    app.graph.add_node(user2_data['id_user'], **user2_data)
+
+    link_data = {"source": user1_data['id_user'], "target": user2_data['id_user'], "type": "test_link", "weight": 0.8}
+    response = client.post("/links/", json=link_data)
+    assert response.status_code == 200
+    created_link = response.json()
+    assert created_link['source'] == link_data['source']
+    assert created_link['target'] == link_data['target']
+    assert mock_db.links.find_one({"source": link_data['source'], "target": link_data['target']}) is not None
+    assert app.graph.has_edge(link_data['source'], link_data['target'])
+
+def test_create_link_duplicate(mock_db):
+    user1_data = generate_user_data()
+    user2_data = generate_user_data()
+    mock_db.users.insert_one(user1_data)
+    mock_db.users.insert_one(user2_data)
+    app.graph.add_node(user1_data['id_user'], **user1_data)
+    app.graph.add_node(user2_data['id_user'], **user2_data)
+
+    link_data = {"source": user1_data['id_user'], "target": user2_data['id_user'], "type": "test_link", "weight": 0.8}
+    client.post("/links/", json=link_data) # Create the link first
+    response = client.post("/links/", json=link_data) # Attempt to create again
+    assert response.status_code == 400
+    assert "Link between these users already exists" in response.json()["detail"]
+
+def test_read_link(mock_db):
+    user1_data = generate_user_data()
+    user2_data = generate_user_data()
+    mock_db.users.insert_one(user1_data)
+    mock_db.users.insert_one(user2_data)
+    link_data = {"source": user1_data['id_user'], "target": user2_data['id_user'], "type": "test_link", "weight": 0.8}
+    mock_db.links.insert_one(link_data)
+
+    response = client.get(f"/links/{link_data['source']}/{link_data['target']}")
+    assert response.status_code == 200
+    read_link = response.json()
+    assert read_link['source'] == link_data['source']
+    assert read_link['target'] == link_data['target']
+
+def test_read_link_not_found():
+    response = client.get("/links/user1/user2")
+    assert response.status_code == 404
+    assert "Link not found" in response.json()["detail"]
+
+def test_delete_link(mock_db):
+    user1_data = generate_user_data()
+    user2_data = generate_user_data()
+    mock_db.users.insert_one(user1_data)
+    mock_db.users.insert_one(user2_data)
+    link_data = {"source": user1_data['id_user'], "target": user2_data['id_user'], "type": "test_link", "weight": 0.8}
+    mock_db.links.insert_one(link_data)
+    app.graph.add_node(user1_data['id_user'], **user1_data)
+    app.graph.add_node(user2_data['id_user'], **user2_data)
+    app.graph.add_edge(link_data['source'], link_data['target'], **link_data)
+
+
+    response = client.delete(f"/links/{link_data['source']}/{link_data['target']}")
+    assert response.status_code == 200
+    assert "Link deleted successfully" in response.json()["message"]
+    assert mock_db.links.find_one({"source": link_data['source'], "target": link_data['target']}) is None
+    assert not app.graph.has_edge(link_data['source'], link_data['target'])
+
+def test_delete_link_not_found():
+    response = client.delete("/links/user1/user2")
+    assert response.status_code == 404
+    assert "Link not found" in response.json()["detail"]
+
+def test_create_graph_rule(mock_db):
+    rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
+    response = client.post("/graph_rules/", json=rule_data)
+    assert response.status_code == 200
+    created_rule = response.json()
+    assert created_rule['name'] == rule_data['name']
+    assert mock_db.graph_rules.find_one({"name": rule_data['name']}) is not None
+
+def test_read_graph_rule(mock_db):
+    rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
+    result = mock_db.graph_rules.insert_one(rule_data)
+    rule_id = str(result.inserted_id)
+    response = client.get(f"/graph_rules/{rule_id}")
+    assert response.status_code == 200
+    read_rule = response.json()
+    assert read_rule['name'] == rule_data['name']
+    assert read_rule['_id'] == rule_id
+
+def test_read_graph_rule_not_found():
+    response = client.get("/graph_rules/non_existent_id")
+    assert response.status_code == 404
+    assert "Graph rule not found" in response.json()["detail"]
+
+def test_update_graph_rule(mock_db):
+    rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
+    result = mock_db.graph_rules.insert_one(rule_data)
+    rule_id = str(result.inserted_id)
+    updated_data = rule_data.copy()
+    updated_data['description'] = "Updated description"
+    response = client.put(f"/graph_rules/{rule_id}", json=updated_data)
+    assert response.status_code == 200
+    updated_rule = response.json()
+    assert updated_rule['description'] == "Updated description"
+    db_rule = mock_db.graph_rules.find_one({"_id": result.inserted_id})
+    assert db_rule['description'] == "Updated description"
+
+def test_update_graph_rule_not_found():
+    rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
+    response = client.put("/graph_rules/non_existent_id", json=rule_data)
+    assert response.status_code == 404
+    assert "Graph rule not found" in response.json()["detail"]
+
+def test_delete_graph_rule(mock_db):
+    rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
+    result = mock_db.graph_rules.insert_one(rule_data)
+    rule_id = str(result.inserted_id)
+    response = client.delete(f"/graph_rules/{rule_id}")
+    assert response.status_code == 200
+    assert "Graph rule deleted successfully" in response.json()["message"]
+    assert mock_db.graph_rules.find_one({"_id": result.inserted_id}) is None
+
+def test_delete_graph_rule_not_found():
+    response = client.delete("/graph_rules/non_existent_id")
+    assert response.status_code == 404
+    assert "Graph rule not found" in response.json()["detail"]
+
+def test_generate_links(setup_and_seed_db):
+    mock_db = setup_and_seed_db
+    # Ensure no links exist initially from seeding
+    assert mock_db.links.count_documents({}) == 0
+    assert app.graph.number_of_edges() == 0
+
+    response = client.post("/generate_links/")
+    assert response.status_code == 200
+    assert "Links generated successfully" in response.json()["message"]
+
+    # Verify links are created in the mock database
+    assert mock_db.links.count_documents({}) > 0
+    # Verify links are added to the graph
+    assert app.graph.number_of_edges() > 0
+
+    # Check if links are created based on rules (e.g., email domain match or zip code match)
+    # This requires inspecting the generated links and seeded data, which can be complex.
+    # A simpler check is to ensure some links were created.
+
+def test_analyze_transaction_no_fraudsters(setup_and_seed_db):
+    mock_db = setup_and_seed_db
+    # Remove all fraud users for this test
+    mock_db.users.delete_many({"is_fraud": True})
+    # Re-initialize graph without fraud users
+    app.graph = nx.Graph()
+    for node_data in mock_db.users.find():
+        app.graph.add_node(node_data['id_user'], **node_data)
+    for link_data in mock_db.links.find():
+        app.graph.add_edge(link_data['source'], link_data['target'], weight=link_data['weight'], type=link_data['type'], reason=link_data['reason'])
+
+    # Generate links to ensure some connections exist
+    client.post("/generate_links/")
+
+    # Get a non-fraudulent user ID
+    normal_user = mock_db.users.find_one({"is_fraud": False})
+    assert normal_user is not None
+    user_id = normal_user['id_user']
+
+    transaction_data = {"id_user": user_id}
+    response = client.get("/analyze", params=transaction_data)
+    assert response.status_code == 200
+    analysis_result = response.json()
+    assert analysis_result['user_id'] == user_id
+    assert analysis_result['proximity_score'] == 0.0
+    assert analysis_result['shortest_path_length_to_fraudster'] == "No path"
+    assert analysis_result['closest_fraudster'] is None
+    # linked_fraud_count should be 0 as there are no fraud users
+    assert analysis_result['linked_fraud_count'] == 0
+    # total_linked_nodes should be greater than 0 if links were generated
+    assert analysis_result['total_linked_nodes'] >= 0 # Can be 0 if no links were generated for this user
+
+def test_analyze_transaction_linked_to_fraudster(setup_and_seed_db):
+    mock_db = setup_and_seed_db
+    # Ensure there are fraud users
+    fraud_users = list(mock_db.users.find({"is_fraud": True}))
+    assert len(fraud_users) > 0
+    fraud_user_id = fraud_users[0]['id_user']
+
+    # Get a non-fraudulent user
+    normal_user = mock_db.users.find_one({"is_fraud": False})
+    assert normal_user is not None
+    user_id = normal_user['id_user']
+
+    # Create a direct link between the normal user and a fraudster
+    link_data = {"source": user_id, "target": fraud_user_id, "type": "direct_fraud_link", "weight": 1.0}
+    mock_db.links.insert_one(link_data)
+    app.graph.add_edge(link_data['source'], link_data['target'], **link_data)
+
+
+    transaction_data = {"id_user": user_id}
+    response = client.get("/analyze", params=transaction_data)
+    assert response.status_code == 200
+    analysis_result = response.json()
+    assert analysis_result['user_id'] == user_id
+    # Proximity score should be calculated based on shortest path (which is 1)
+    assert analysis_result['proximity_score'] == 1.0 / (1 + 1) # 1 / (path_length + 1)
+    assert analysis_result['shortest_path_length_to_fraudster'] == 1
+    assert analysis_result['closest_fraudster'] == fraud_user_id
+    # linked_fraud_count should be at least 1
+    assert analysis_result['linked_fraud_count'] >= 1
+    assert analysis_result['total_linked_nodes'] >= 1
+def test_cluster_nodes(setup_and_seed_db):
+    mock_db = setup_and_seed_db
+    # Ensure no clusters exist initially
+    assert mock_db.clusters.count_documents({}) == 0
+
+    response = client.post("/cluster_nodes/")
+    assert response.status_code == 200
+    assert "Nodes clustered successfully" in response.json()["message"]
+
+    # Verify clusters are created in the mock database
+    assert mock_db.clusters.count_documents({}) > 0
+
+    # Optional: Verify the number of clusters or members
+    # Based on the seeding logic (4 fraud clusters + individual normal users)
+    # The number of clusters should be around 4 + 30 = 34, but this can vary
+    # depending on how the clustering algorithm handles the normal users.
+    # A simpler check is to ensure some clusters were created and that fraud users
+    # within the same seeded cluster are in the same database cluster.
+
+    # Get fraud users from the mock DB
+    fraud_users_from_db = list(mock_db.users.find({"is_fraud": True}))
+
+    # Group fraud users by their seeded cluster properties (domain_email, address_zip)
+    seeded_fraud_clusters = {}
+    for user in fraud_users_from_db:
+        cluster_key = (user.get("domain_email"), user.get("address_zip"))
+        if cluster_key not in seeded_fraud_clusters:
+            seeded_fraud_clusters[cluster_key] = []
+        seeded_fraud_clusters[cluster_key].append(user['id_user'])
+
+    # Verify that users from the same seeded fraud cluster are in the same database cluster
+    db_clusters = list(mock_db.clusters.find())
+    for seeded_cluster_members in seeded_fraud_clusters.values():
+        if not seeded_cluster_members:
+            continue # Skip empty clusters
+
+        first_member_id = seeded_cluster_members[0]
+        # Find the database cluster containing the first member
+        containing_db_cluster = None
+        for db_cluster in db_clusters:
+            if first_member_id in db_cluster.get("members", []):
+                containing_db_cluster = db_cluster
+                break
+
+        assert containing_db_cluster is not None, f"User {first_member_id} not found in any database cluster"
+
+        # Check if all members of the seeded cluster are in this database cluster
+        for member_id in seeded_cluster_members:
+            assert member_id in containing_db_cluster.get("members", []), f"User {member_id} from seeded cluster not found in the same database cluster as {first_member_id}"
+
+def test_analyze_transaction_indirectly_linked_to_fraudster(setup_and_seed_db):
+    mock_db = setup_and_seed_db
+    # Ensure there are fraud users
+    fraud_users = list(mock_db.users.find({"is_fraud": True}))
+    assert len(fraud_users) > 0
+    fraud_user_id = fraud_users[0]['id_user']
+
+    # Get two non-fraudulent users
+    normal_users = list(mock_db.users.find({"is_fraud": False}).limit(2))
+    assert len(normal_users) >= 2
+    user1_id = normal_users[0]['id_user']
+    user2_id = normal_users[1]['id_user']
+
+    # Create indirect links: user1 -> user2 -> fraudster
+    link1_data = {"source": user1_id, "target": user2_id, "type": "indirect_link1", "weight": 0.5}
+    link2_data = {"source": user2_id, "target": fraud_user_id, "type": "indirect_link2", "weight": 0.5}
+    mock_db.links.insert_one(link1_data)
+    mock_db.links.insert_one(link2_data)
+    app.graph.add_node(user1_id, **normal_users[0])
+    app.graph.add_node(user2_id, **normal_users[1])
+    app.graph.add_edge(link1_data['source'], link1_data['target'], **link1_data)
+    app.graph.add_edge(link2_data['source'], link2_data['target'], **link2_data)
+
+
+    transaction_data = {"id_user": user1_id}
+    response = client.get("/analyze", params=transaction_data)
+    assert response.status_code == 200
+    analysis_result = response.json()
+    assert analysis_result['user_id'] == user1_id
+    # Shortest path should be 2 (user1 -> user2 -> fraudster)
+    assert analysis_result['shortest_path_length_to_fraudster'] == 2
+    assert analysis_result['proximity_score'] == 1.0 / (2 + 1) # 1 / (path_length + 1)
+    assert analysis_result['closest_fraudster'] == fraud_user_id
+    assert analysis_result['linked_fraud_count'] == 0 # user1 is not directly linked to a fraudster
+    assert analysis_result['total_linked_nodes'] >= 1 # user1 is linked to user2
+
+def test_analyze_transaction_user_not_in_graph():
+    transaction_data = {"id_user": "non_existent_user"}
+    response = client.get("/analyze", params=transaction_data)
+    assert response.status_code == 404
+    assert "User ID non_existent_user not found in the graph." in response.json()["detail"]
+
+def test_analyze_transaction_missing_user_id():
+    transaction_data = {"some_other_field": "value"}
+    response = client.get("/analyze", params=transaction_data)
+    assert response.status_code == 400
+    assert "Missing 'id_user' in transaction data" in response.json()["detail"]

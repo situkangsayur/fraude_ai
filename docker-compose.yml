@@ -96,6 +96,17 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+  orchestrator_integration_tests:
+    image: fraude_ai-orchestrator
+    depends_on:
+      orchestrator:
+        condition: service_started
+      rules_policy_engine:
+        condition: service_started
+    volumes:
+      - ./orchestrator/tests:/app/tests
+    command: poetry run pytest /app/tests/test_main.py
+
   mongodb:
     image: mongo:latest
     ports:
@@ -104,7 +115,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
     healthcheck:
-      test: mongosh --host mongodb --port 27017 -u root --authenticationDatabase admin --eval "db.runCommand('ping').ok"
+      test: mongosh --host mongodb --port 27017 -u root -p ${MONGO_INITDB_ROOT_PASSWORD} --authenticationDatabase admin --eval "db.runCommand('ping').ok"
       interval: 10s
       timeout: 5s
       retries: 5

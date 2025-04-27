@@ -1,140 +1,141 @@
 from fastapi import FastAPI, HTTPException, Depends
 from typing import Dict, Any, List, Optional
-import networkx as nx
-from pymongo import MongoClient
-from pydantic import BaseModel
-from common.config import MONGODB_URI, MONGODB_DB_NAME
-from common.mongodb_utils import get_mongodb_client, get_mongodb_database
+from .models import UserNode, GraphRule, Link
+from .services import (
+    initialize_graph_db,
+    create_user_service,
+    read_user_service,
+    update_user_service,
+    delete_user_service,
+    create_link_service,
+    read_link_service,
+    delete_link_service,
+    generate_links_service,
+    create_graph_rule_service,
+    read_graph_rule_service,
+    update_graph_rule_service,
+    delete_graph_rule_service,
+    analyze_transaction_service,
+    cluster_nodes_service
+)
 
 app = FastAPI()
-
-class UserNode(BaseModel):
-    id_user: str
-    nama_lengkap: str
-    email: str
-    domain_email: str
-    address: str
-    address_zip: str
-    address_city: str
-    address_province: str
-    address_kecamatan: str
-    phone_number: str
-    is_fraud: bool = False
-
-class GraphRule(BaseModel):
-    name: str
-    description: str
-    field1: str
-    operator: str  # e.g., "equal", "greater_than", "contains"
-    field2: Optional[str] = None  # Optional, for comparing two fields
-    value: Optional[str] = None  # Optional, for comparing with a fixed value
 
 @app.on_event("startup")
 async def startup_event():
     """
-    Loads the graph from MongoDB on startup.
+    Initializes the graph and database connection on startup.
     """
-    global graph, db
-    client = get_mongodb_client(MONGODB_URI)
-    if client is None:
-        raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
-    db = get_mongodb_database(client, MONGODB_DB_NAME)
-    if db is None:
-        raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
+    await initialize_graph_db()
 
-    graph = nx.Graph()
-
-    # Load nodes from MongoDB
-    for node_data in db.users.find():
-        node_id = node_data['id_user']
-        graph.add_node(node_id, **node_data)
-
-    # Load edges from MongoDB
-    for link_data in db.links.find():
-        source = link_data['source']
-        target = link_data['target']
-        weight = link_data['weight']
-        graph.add_edge(source, target, weight=weight, type=link_data['type'], reason=link_data['reason'])
-
-@app.post("/nodes/", response_model=Dict[str, Any])
-async def create_node(user: UserNode):
+# CRUD operations for User Nodes
+@app.post("/users/", response_model=Dict[str, Any])
+async def create_user(user: UserNode):
     """
     Creates a new user node in the graph and MongoDB.
     """
     try:
-        user_data = user.dict()
-        db.users.insert_one(user_data)
-        node_id = user_data['id_user']
-        graph.add_node(node_id, **user_data)
-        return user_data
+        return await create_user_service(user)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/links/", response_model=Dict[str, Any])
-async def create_links():
+@app.get("/users/{user_id}", response_model=Dict[str, Any])
+async def read_user(user_id: str):
     """
-    Creates links between users based on predefined rules.
+    Reads a user node by ID from MongoDB.
     """
     try:
-        # Load graph rules from MongoDB
-        graph_rules = await db.graph_rules.find().to_list(length=None)
-
-        # Iterate through all users and apply graph rules
-        for user1 in db.users.find():
-            for user2 in db.users.find():
-                if user1['id_user'] == user2['id_user']:
-                    continue
-
-                for rule in graph_rules:
-                    if apply_graph_rule(user1, user2, rule):
-                        # Create a link between the users
-                        link_data = {
-                            "source": user1['id_user'],
-                            "target": user2['id_user'],
-                            "type": rule['name'],
-                            "weight": 0.5,  # Adjust weight as needed
-                            "reason": rule['description'],
-                            "rule_id": rule['_id']
-                        }
-                        db.links.insert_one(link_data)
-                        graph.add_edge(user1['id_user'], user2['id_user'], weight=0.5, type=rule['name'], reason=rule['description'])
-                        break  # Only create one link per pair of users
-        return {"message": "Links created successfully"}
+        return await read_user_service(user_id)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def apply_graph_rule(user1, user2, rule):
+@app.put("/users/{user_id}", response_model=Dict[str, Any])
+async def update_user(user_id: str, user: UserNode):
     """
-    Applies a graph rule to two users and returns True if the rule is satisfied, False otherwise.
+    Updates a user node by ID in MongoDB.
     """
-    field1 = user1.get(rule['field1'])
-    field2 = user2.get(rule['field2']) if rule.get('field2') else rule.get('value')
+    try:
+        return await update_user_service(user_id, user)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    if field1 is None or field2 is None:
-        return False
+@app.delete("/users/{user_id}", response_model=Dict[str, Any])
+async def delete_user(user_id: str):
+    """
+    Deletes a user node by ID from MongoDB and the graph.
+    """
+    try:
+        return await delete_user_service(user_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    operator = rule['operator']
+# CRUD operations for Links
+@app.post("/links/", response_model=Dict[str, Any])
+async def create_link(link: Link):
+    """
+    Creates a new link in the graph and MongoDB.
+    """
+    try:
+        return await create_link_service(link)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    if operator == "equal":
-        return field1 == field2
-    elif operator == "greater_than":
-        return field1 > field2
-    elif operator == "lower_than":
-        return field1 < field2
-    # Add more operators as needed
+@app.get("/links/{source_id}/{target_id}", response_model=Dict[str, Any])
+async def read_link(source_id: str, target_id: str):
+    """
+    Reads a link by source and target ID from MongoDB.
+    """
+    try:
+        return await read_link_service(source_id, target_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return False
+@app.delete("/links/{source_id}/{target_id}", response_model=Dict[str, Any])
+async def delete_link(source_id: str, target_id: str):
+    """
+    Deletes a link by source and target ID from MongoDB and the graph.
+    """
+    try:
+        return await delete_link_service(source_id, target_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/generate_links/", response_model=Dict[str, Any])
+async def generate_links():
+    """
+    Generates links between users based on predefined rules and distance metrics.
+    """
+    try:
+        return await generate_links_service()
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# CRUD operations for Graph Rules
 @app.post("/graph_rules/", response_model=Dict[str, Any])
 async def create_graph_rule(rule: GraphRule):
     """
     Creates a new graph rule in MongoDB.
     """
     try:
-        rule_data = rule.dict()
-        result = await db.graph_rules.insert_one(rule_data)
-        new_rule = await db.graph_rules.find_one({"_id": result.inserted_id})
-        return new_rule
+        return await create_graph_rule_service(rule)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -144,10 +145,9 @@ async def read_graph_rule(rule_id: str):
     Reads a graph rule by ID from MongoDB.
     """
     try:
-        rule = await db.graph_rules.find_one({"_id": rule_id})
-        if rule is None:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        return rule
+        return await read_graph_rule_service(rule_id)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -157,12 +157,9 @@ async def update_graph_rule(rule_id: str, rule: GraphRule):
     Updates a graph rule by ID in MongoDB.
     """
     try:
-        rule_data = rule.dict()
-        result = await db.graph_rules.update_one({"_id": rule_id}, {"$set": rule_data})
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        updated_rule = await db.graph_rules.find_one({"_id": rule_id})
-        return updated_rule
+        return await update_graph_rule_service(rule_id, rule)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -172,10 +169,9 @@ async def delete_graph_rule(rule_id: str):
     Deletes a graph rule by ID from MongoDB.
     """
     try:
-        result = await db.graph_rules.delete_one({"_id": rule_id})
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Graph rule not found")
-        return {"message": "Graph rule deleted successfully"}
+        return await delete_graph_rule_service(rule_id)
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -184,28 +180,21 @@ async def analyze_transaction(transaction_data: Dict[str, Any]) -> Dict[str, Any
     """
     Analyzes the transaction data using graph theory.
     """
-    user_id = transaction_data['id_user']
-
-    # Get the list of fraudulent user IDs (replace with actual data retrieval logic)
-    fraud_user_ids = ["user123", "user456"]
-
     try:
-        # Calculate the shortest path to a fraudster
-        shortest_path_length = float('inf')
-        for fraud_user in fraud_user_ids:
-            try:
-                path_length = nx.shortest_path_length(graph, source=user_id, target=fraud_user)
-                proximity = 1.0 / path_length  # Closer is higher proximity
-            except nx.NetworkXNoPath:
-                # No path to fraudulent user
-                pass
+        return await analyze_transaction_service(transaction_data)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # Calculate a proximity score based on the shortest path length
-        proximity_score = 1.0 / shortest_path_length if shortest_path_length != float('inf') else 0.0
-
-        return {
-            "proximity_score": proximity_score,
-            "shortest_path_length": shortest_path_length,
-        }
+@app.post("/cluster_nodes/", response_model=Dict[str, Any])
+async def cluster_nodes():
+    """
+    Clusters nodes based on graph rules and distance metrics.
+    """
+    try:
+        return await cluster_nodes_service()
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

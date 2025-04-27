@@ -38,6 +38,7 @@ RUN poetry add /app/common-${COMMON_VERSION}.tar.gz
 # Assumes build context is the monorepo root
 COPY ${PROJECT_NAME}/dist/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz .
 RUN poetry add /app/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz
+RUN poetry install
 
 # Command to run the service (FastAPI/Uvicorn)
 CMD ["poetry", "run", "uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]
