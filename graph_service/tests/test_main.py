@@ -9,6 +9,7 @@ import networkx as nx
 from unittest.mock import patch, AsyncMock # Import AsyncMock
 import random
 import string
+from bson.objectid import ObjectId
 
 # Mock MongoDB client and database
 @pytest.fixture(scope="function")
@@ -119,16 +120,13 @@ def seed_data(db):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def setup_and_seed_db(mock_db):
+async def setup_and_seed_db(mock_db):
     seed_data(mock_db)
     # Patch the global db and graph objects in the services module
     with patch('graph_service.services.db', mock_db), \
          patch('graph_service.services.graph', nx.Graph()) as mock_graph:
-        # Manually load data into the mocked graph for tests that directly check graph state
-        for node_data in mock_db.users.find():
-            mock_graph.add_node(node_data['id_user'], **node_data)
-        for link_data in mock_db.links.find():
-            mock_graph.add_edge(link_data['source'], link_data['target'], weight=link_data['weight'], type=link_data['type'], reasons=link_data.get('reasons', []), rule_ids=link_data.get('rule_ids', []))
+        # Initialize the graph with data from the mocked database
+        await initialize_graph_db()
         yield mock_db
 
 def test_create_user(mock_db):
@@ -166,6 +164,10 @@ def test_update_user(mock_db):
     mock_db.users.insert_one(user_data)
     updated_data = user_data.copy()
     updated_data['nama_lengkap'] = "Updated Name"
+    # Convert ObjectId to string for JSON serialization
+    for key, value in updated_data.items():
+        if isinstance(value, ObjectId):
+            updated_data[key] = str(value)
     response = client.put(f"/users/{user_data['id_user']}", json=updated_data)
     assert response.status_code == 200
     updated_user = response.json()
@@ -188,6 +190,7 @@ def test_delete_user(mock_db):
     link_data = {"source": user_data['id_user'], "target": "another_user", "type": "test_link"}
     mock_db.links.insert_one(link_data)
     # Nodes and edges are added to the graph by the respective service functions, not directly in the test
+
 
     response = client.delete(f"/users/{user_data['id_user']}")
     assert response.status_code == 200
@@ -293,10 +296,10 @@ def test_read_graph_rule(mock_db):
     assert response.status_code == 200
     read_rule = response.json()
     assert read_rule['name'] == rule_data['name']
-    assert read_rule['_id'] == rule_id
+    assert read_rule['id'] == rule_id
 
 def test_read_graph_rule_not_found():
-    response = client.get("/graph_rules/non_existent_id")
+    response = client.get("/graph_rules/000000000000000000000000")
     assert response.status_code == 404
     assert "Graph rule not found" in response.json()["detail"]
 
@@ -306,6 +309,10 @@ def test_update_graph_rule(mock_db):
     rule_id = str(result.inserted_id)
     updated_data = rule_data.copy()
     updated_data['description'] = "Updated description"
+    # Convert ObjectId to string for JSON serialization
+    for key, value in updated_data.items():
+        if isinstance(value, ObjectId):
+            updated_data[key] = str(value)
     response = client.put(f"/graph_rules/{rule_id}", json=updated_data)
     assert response.status_code == 200
     updated_rule = response.json()
@@ -315,7 +322,7 @@ def test_update_graph_rule(mock_db):
 
 def test_update_graph_rule_not_found():
     rule_data = {"name": "test_rule", "description": "A test rule", "field1": "email", "operator": "contains", "value": "@example.com"}
-    response = client.put("/graph_rules/non_existent_id", json=rule_data)
+    response = client.put("/graph_rules/000000000000000000000000", json=rule_data)
     assert response.status_code == 404
     assert "Graph rule not found" in response.json()["detail"]
 
@@ -329,7 +336,7 @@ def test_delete_graph_rule(mock_db):
     assert mock_db.graph_rules.find_one({"_id": result.inserted_id}) is None
 
 def test_delete_graph_rule_not_found():
-    response = client.delete("/graph_rules/non_existent_id")
+    response = client.delete("/graph_rules/000000000000000000000000")
     assert response.status_code == 404
     assert "Graph rule not found" in response.json()["detail"]
 
@@ -498,7 +505,6 @@ def test_analyze_transaction_indirectly_linked_to_fraudster(setup_and_seed_db):
     assert analysis_result['closest_fraudster'] == fraud_user_id
     assert analysis_result['linked_fraud_count'] == 0 # user1 is not directly linked to a fraudster
     assert analysis_result['total_linked_nodes'] >= 1 # user1 is linked to user2
-
 def test_analyze_transaction_user_not_in_graph():
     transaction_data = {"id_user": "non_existent_user"}
     transaction_data = {"id_user": "non_existent_user"}
@@ -512,7 +518,7 @@ def test_analyze_transaction_missing_user_id():
     transaction_data = {"some_other_field": "value"}
     # Change to POST request with json body
     response = client.post("/analyze", json=transaction_data)
-    assert response.status_code == 422 # Expect 422 for validation error with POST body
+    assert response.status_code == 400 # Expect 400 for missing user ID
     # The error detail might change with Pydantic validation on the body,
     # so we'll check for the specific Pydantic error message.
     assert "Field required" in response.json()["detail"][0]["msg"]
@@ -612,7 +618,7 @@ def test_get_links_by_cluster(setup_and_seed_db):
     assert cluster_with_links is not None, "Could not find a cluster with links between its members in the seeded data."
     cluster_id = cluster_with_links['cluster_id']
 
-    response = client.get(f"/clusters/{cluster_id}/links")
+    response = client.get("/links/", params={"cluster_id": cluster_id})
     assert response.status_code == 200
     links = response.json()
     assert isinstance(links, list)
@@ -631,7 +637,7 @@ def test_get_links_by_cluster_not_found(setup_and_seed_db):
     # Ensure no clusters exist or get a non-existent ID
     mock_db.clusters.delete_many({}) # Clear clusters
 
-    response = client.get("/clusters/non_existent_cluster_id/links")
+    response = client.get("/links/", params={"cluster_id": "non_existent_cluster_id"})
     # The service returns an empty list if the cluster is not found or has no links
     assert response.status_code == 200
     links = response.json()

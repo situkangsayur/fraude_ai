@@ -179,7 +179,7 @@ async def delete_graph_rule(rule_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/analyze")
+@app.post("/analyze")
 async def analyze_transaction(transaction_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyzes the transaction data using graph theory.
