@@ -1,3 +1,8 @@
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from .models import UserNode, GraphRule, Link, Cluster
@@ -43,6 +48,7 @@ async def create_user(user: UserNode):
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.exception(f"Error in create_user_service: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/users/{user_id}", response_model=Dict[str, Any])
@@ -55,6 +61,7 @@ async def read_user(user_id: str):
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.exception(f"Error in read_user_service: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/users/{user_id}", response_model=Dict[str, Any])
@@ -67,6 +74,7 @@ async def update_user(user_id: str, user: UserNode):
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.exception(f"Error in update_user_service: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/users/{user_id}", response_model=Dict[str, Any])

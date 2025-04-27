@@ -11,17 +11,25 @@ from .models import UserNode, GraphRule, Link # Import models from the same pack
 graph = nx.Graph()
 db = None
 
+import sys
+
 async def initialize_graph_db():
     """
     Initializes the graph and database connection on startup.
     """
     global graph, db
-    client = get_mongodb_client(MONGODB_URI)
-    if client is None:
-        raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
-    db = get_mongodb_database(client, MONGODB_DB_NAME)
-    if db is None:
-        raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
+    if 'pytest' in sys.modules:
+        # Use mongomock for testing
+        from mongomock import MongoClient
+        client = MongoClient()
+        db = client['fraud_detection']
+    else:
+        client = get_mongodb_client(MONGODB_URI)
+        if client is None:
+            raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+        db = get_mongodb_database(client, MONGODB_DB_NAME)
+        if db is None:
+            raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
     graph = nx.Graph()
 
