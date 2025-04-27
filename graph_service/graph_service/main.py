@@ -16,7 +16,11 @@ from .services import (
     update_graph_rule_service,
     delete_graph_rule_service,
     analyze_transaction_service,
-    cluster_nodes_service
+    cluster_nodes_service,
+    get_all_clusters_service,
+    get_cluster_by_id_service,
+    get_all_links_service,
+    get_links_by_cluster_service
 )
 
 app = FastAPI()
@@ -194,6 +198,46 @@ async def cluster_nodes():
     """
     try:
         return await cluster_nodes_service()
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoints for dashboard visualization
+@app.get("/clusters/", response_model=List[Cluster])
+async def get_all_clusters():
+    """
+    Retrieves all clusters with their members.
+    """
+    try:
+        return await get_all_clusters_service()
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/clusters/{cluster_id}", response_model=Cluster)
+async def get_cluster_by_id(cluster_id: str):
+    """
+    Retrieves a specific cluster by ID with its members.
+    """
+    try:
+        return await get_cluster_by_id_service(cluster_id)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/links/", response_model=List[Link])
+async def get_all_links(cluster_id: Optional[str] = None):
+    """
+    Retrieves all links or links within a specific cluster, including reasons.
+    """
+    try:
+        if cluster_id:
+            return await get_links_by_cluster_service(cluster_id)
+        else:
+            return await get_all_links_service()
     except HTTPException as e:
         raise e
     except Exception as e:
