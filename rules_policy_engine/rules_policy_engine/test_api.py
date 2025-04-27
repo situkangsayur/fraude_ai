@@ -42,7 +42,8 @@ def test_evaluate_standard_rule():
         operator="greater_than",
         value=50,
     )
-    assert evaluate_standard_rule(transaction, rule) == True
+    # Pass the rule as a dictionary
+    assert evaluate_standard_rule(transaction, rule.model_dump()) == True
 
 def test_evaluate_standard_rule_field_not_found():
     transaction = {"user_id": "user123"}
@@ -55,7 +56,8 @@ def test_evaluate_standard_rule_field_not_found():
         operator="greater_than",
         value=50,
     )
-    assert evaluate_standard_rule(transaction, rule) == False
+    # Pass the rule as a dictionary
+    assert evaluate_standard_rule(transaction, rule.model_dump()) == False
 
 @patch('rules_policy_engine.services.evaluate_velocity_rule', return_value=False)
 async def test_evaluate_policy(mock_evaluate_velocity_rule):
@@ -103,12 +105,8 @@ from unittest.mock import patch
 
 @pytest.mark.asyncio
 async def test_create_policy(mock_db):
-    with patch.dict(os.environ, {"MONGODB_URI": ""}):
-        # Override dependencies for the test
-        app.dependency_overrides[get_mongodb_client] = lambda *args, **kwargs: mock_db.client
-
-        # Override dependencies for the test
-        app.dependency_overrides[get_mongodb_client] = lambda *args, **kwargs: mock_db.client
+    # Override dependencies for the test
+    app.dependency_overrides[get_mongodb_database] = lambda: mock_db
 
     # Test creating a policy via the API endpoint (optional, could be removed if covered elsewhere)
     policy_data = {
@@ -152,9 +150,9 @@ async def test_create_policy_empty_rules(mock_db):
 
     # Clear overrides after the test
     app.dependency_overrides.clear()
-    # Verify it was actually inserted in the mock_db
+    # Verify it was NOT inserted in the mock_db because creation should fail
     found = mock_db.policies.find_one({"name": "API Test Policy Empty Rules"})
-    assert found is not None
+    assert found is None
     assert found["description"] == "API Test policy description with empty rules"
 
 

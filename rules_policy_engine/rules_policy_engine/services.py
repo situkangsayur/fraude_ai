@@ -7,30 +7,71 @@ from common.config import MONGODB_URI, MONGODB_DB_NAME
 RISK_FRAUD_THRESHOLD = 100
 RISK_SUSPECT_THRESHOLD = 70
 
-def evaluate_standard_rule(transaction, rule: StandardRule) -> bool:
-    """Evaluates a standard rule against a transaction."""
-    field_value = transaction.get(rule.field)
+def evaluate_standard_rule(transaction: dict, rule_data: dict) -> bool:
+    """Evaluates a standard rule dictionary against a transaction dictionary."""
+    field = rule_data.get("field")
+    operator = rule_data.get("operator")
+    value = rule_data.get("value")
+
+    if field is None or operator is None or value is None:
+         print(f"Warning: Incomplete standard rule data: {rule_data}")
+         return False # Incomplete rule data
+
+    field_value = transaction.get(field)
     if field_value is None:
+        # Optionally print a warning if the field is expected but missing
+        # print(f"Warning: Field '{field}' not found in transaction: {transaction}")
         return False  # Field not found in transaction
 
-    operator = rule.operator
-    value = rule.value
+    # Ensure type consistency for comparisons if necessary, especially for numeric types
+    # Example: Convert value from rule if field_value is numeric
+    # try:
+    #     if isinstance(field_value, (int, float)):
+    #         value = type(field_value)(value)
+    # except (ValueError, TypeError):
+    #      print(f"Warning: Type mismatch or conversion error for rule {rule_data} and transaction field {field_value}")
+    #      return False
 
     if operator == "equal":
         return field_value == value
     elif operator == "greater_than":
-        return field_value > value
+        # Add explicit type checks/conversions if necessary before comparison
+        try:
+            # Ensure comparison is valid (e.g., comparing numbers)
+            return field_value > value
+        except TypeError:
+             print(f"Warning: Type mismatch for '>' comparison. Rule: {rule_data}, Tx Value: {field_value}")
+             return False
     elif operator == "greater_than_equal":
-        return field_value >= value
+        try:
+            return field_value >= value
+        except TypeError:
+             print(f"Warning: Type mismatch for '>=' comparison. Rule: {rule_data}, Tx Value: {field_value}")
+             return False
     elif operator == "lower_than":
-        return field_value < value
+        try:
+            return field_value < value
+        except TypeError:
+             print(f"Warning: Type mismatch for '<' comparison. Rule: {rule_data}, Tx Value: {field_value}")
+             return False
     elif operator == "lower_than_equal":
-        return field_value <= value
+        try:
+            return field_value <= value
+        except TypeError:
+             print(f"Warning: Type mismatch for '<=' comparison. Rule: {rule_data}, Tx Value: {field_value}")
+             return False
     elif operator == "not_equal":
         return field_value != value
     elif operator == "in":
+        # Ensure value is iterable (list, tuple, set, string) for 'in'/'not in' operators
+        if not isinstance(value, (list, tuple, set, str)):
+             print(f"Warning: 'in' operator requires an iterable value in rule: {rule_data}")
+             return False
         return field_value in value
     elif operator == "not_in":
+        if not isinstance(value, (list, tuple, set, str)):
+             print(f"Warning: 'not in' operator requires an iterable value in rule: {rule_data}")
+             return False
         return field_value not in value
     else:
         print(f"Unknown operator: {operator}")
@@ -56,46 +97,86 @@ def parse_time_range(time_range: str) -> timedelta:
     else:
         raise ValueError("Invalid time unit")
 
-async def evaluate_velocity_rule(transaction, rule: VelocityRule) -> bool:
-    """Evaluates a velocity rule against a transaction."""
+async def evaluate_velocity_rule(transaction: dict, rule_data: dict) -> bool:
+    """Evaluates a velocity rule dictionary against a transaction dictionary."""
+    # Extract necessary fields from rule_data
+    time_range_str = rule_data.get("time_range")
+    aggregation_function = rule_data.get("aggregation_function", "").lower()
+    field_to_aggregate = rule_data.get("field") # Field like 'amount' or '*' for count
+    threshold = rule_data.get("threshold")
+
+    # Validate required rule fields
+    if not all([time_range_str, aggregation_function, field_to_aggregate, threshold is not None]):
+        print(f"Warning: Incomplete velocity rule data: {rule_data}")
+        return False
+
+    # Validate aggregation function
+    valid_aggregations = ["sum", "count", "average"] # 'count' might need special handling
+    if aggregation_function not in valid_aggregations:
+        print(f"Unsupported aggregation function: {aggregation_function}")
+        return False
+
+    # Get DB connection (Consider dependency injection or a shared client)
+    # Using a new client per call is inefficient
     client = MongoClient(MONGODB_URI)
     db = client[MONGODB_DB_NAME]
-    collection = db.transactions  # Assuming transactions are stored in a 'transactions' collection
+    collection = db.transactions # Assuming transactions are stored here
 
     try:
-        time_delta = parse_time_range(rule.time_range)
-        cutoff_time = datetime.utcnow() - time_delta
+        time_delta = parse_time_range(time_range_str)
+        cutoff_time = datetime.utcnow() - time_delta # Consider timezone awareness
 
-        aggregation_function = rule.aggregation_function.lower()
+        # --- Build Aggregation Pipeline ---
+        match_stage = {
+            "user_id": transaction.get("user_id"), # Use .get() for safety
+            # Assuming transaction timestamp field is named 'timestamp' and is a datetime object or ISO string
+            "timestamp": {"$gte": cutoff_time} # Use datetime object directly if possible
+        }
 
-        if aggregation_function not in ["sum", "count", "average"]:
-            print(f"Unsupported aggregation function: {aggregation_function}")
-            return False
+        group_stage = {"_id": None} # Group all matched documents for the user
+
+        # Determine the aggregation operation
+        if aggregation_function == "count":
+            # For count, we sum 1 for each document
+            group_stage["aggregated_value"] = {"$sum": 1}
+        elif field_to_aggregate == "*": # Handle count case if field is '*'
+             group_stage["aggregated_value"] = {"$sum": 1}
+        else:
+            # For sum/average, specify the field from the transaction document
+            group_stage["aggregated_value"] = {f"${aggregation_function}": f"${field_to_aggregate}"}
+
 
         pipeline = [
-            {"$match": {
-                "user_id": transaction["user_id"],
-                "timestamp": {"$gte": cutoff_time.isoformat()},
-            }},
-            {"$group": {
-                "_id": None,
-                "total": {f"${aggregation_function}": f"${rule.field}"}
-            }}
+            {"$match": match_stage},
+            {"$group": group_stage}
         ]
+        # print(f"Velocity rule pipeline: {pipeline}") # Debugging
 
-        result = list(await collection.aggregate(pipeline).to_list(length=1))
+        # Execute aggregation (ensure collection.aggregate is awaited if using async driver like motor)
+        # Note: MongoClient from pymongo is synchronous. If async is needed, use Motor.
+        # For now, assuming pymongo and synchronous execution within the async function.
+        # If Motor is used elsewhere, this needs adjustment.
+        result_cursor = collection.aggregate(pipeline)
+        result = list(result_cursor) # Evaluate the cursor
+
+        # print(f"Velocity rule result: {result}") # Debugging
+
         if not result:
-            aggregated_value = 0  # No transactions found in the time range
+            aggregated_value = 0  # No matching transactions found
         else:
-            aggregated_value = result[0]["total"]
+            # Handle potential None if the field didn't exist in any doc for sum/avg
+            aggregated_value = result[0].get("aggregated_value", 0) or 0
 
-        if aggregated_value is None:
+
+        # print(f"Aggregated value: {aggregated_value}, Threshold: {threshold}") # Debugging
+
+        # Compare with threshold (ensure types are compatible)
+        try:
+            if aggregated_value > threshold:
+                return True
+        except TypeError:
+            print(f"Warning: Type mismatch comparing aggregated value and threshold. Agg: {aggregated_value}, Thr: {threshold}")
             return False
-
-        threshold = rule.threshold
-
-        if aggregated_value > threshold:
-            return True
         else:
             return False
 
@@ -110,12 +191,12 @@ async def evaluate_policy(transaction, policy: Policy) -> int:
     total_points = 0
     for rule in policy.get("rules", []):
         if rule.get("rule_type") == "standard":
-            standard_rule = StandardRule(**rule)
-            if evaluate_standard_rule(transaction, standard_rule):
+            # Pass the rule dictionary directly
+            if evaluate_standard_rule(transaction, rule):
                 total_points += rule.get("points", 0)
         elif rule.get("rule_type") == "velocity":
-            velocity_rule = VelocityRule(**rule)
-            if await evaluate_velocity_rule(transaction, velocity_rule):
+            # Pass the rule dictionary directly
+            if await evaluate_velocity_rule(transaction, rule):
                 total_points += rule.get("points", 0)
     return total_points
 

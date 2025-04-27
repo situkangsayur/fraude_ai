@@ -5,7 +5,7 @@ from .models import StandardRule, VelocityRule, Policy
 @pytest.fixture
 def mock_db():
     client = mongomock.MongoClient()
-    db = client["test_db"]
+    db = mongomock.Database(client, "test_db", _store={})
 
     # Seed the database with standard rules
     db.standard_rule = db["standard_rule"]

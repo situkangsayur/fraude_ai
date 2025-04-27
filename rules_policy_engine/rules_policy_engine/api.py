@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from common.config import MONGODB_URI, MONGODB_DB_NAME
 from common.mongodb_utils import get_mongodb_client, get_mongodb_database
-from .models import Policy, StandardRule, VelocityRule, Transaction
+# Import RuleType
+from .models import Policy, StandardRule, VelocityRule, Transaction, RuleType
 from .services import evaluate_policy, determine_risk_level
 
 policy_router = APIRouter()
@@ -10,20 +11,17 @@ rule_router = APIRouter()
 
 
 @policy_router.post("/policies/", response_model=Dict[str, Any])
-async def create_policy(policy: Policy, mock_db=None):
+# Use Depends for database injection
+async def create_policy(policy: Policy, db: Any = Depends(get_mongodb_database)):
     """Creates a new fraud detection policy."""
     try:
         print("Creating policy...")
-        db = mock_db
+        # db is now injected via Depends
+
+        # Basic check if db injection worked (optional, Depends should handle errors)
         if db is None:
-            client = get_mongodb_client(MONGODB_URI)
-            if not client:
-                print("Failed to connect to MongoDB")
-                raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
-            db = get_mongodb_database(client, MONGODB_DB_NAME)
-            if db is None:
-                print("Failed to get MongoDB database")
-                raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
+             print("Failed to get MongoDB database via Depends")
+             raise HTTPException(status_code=500, detail="Internal server error: Database connection failed")
 
         policy_data = policy.model_dump()
         print(f"Policy data: {policy_data}")
@@ -31,22 +29,33 @@ async def create_policy(policy: Policy, mock_db=None):
         result = db.policies.insert_one(policy_data)
         policy_id = result.inserted_id
 
+        # Check if the policy has any rules
+        if not policy.rules:
+            raise HTTPException(status_code=422, detail="Policy must have at least one rule")
+
         # Insert the rules into their respective collections
         for rule in policy.rules:
-            rule_data = rule.dict()
+            rule_data = rule.model_dump()
             print(f"Rule data: {rule_data}")
-            if rule.rule_type == "standard":
+            # Compare with Enum member
+            if rule.rule_type == RuleType.STANDARD:
+                # Ensure collection name matches if needed, e.g., db[RuleType.STANDARD.value + "_rule"]
                 db.standard_rule.insert_one(rule_data)
-            elif rule.rule_type == "velocity":
+            # Compare with Enum member
+            elif rule.rule_type == RuleType.VELOCITY:
                 db.velocity_rule.insert_one(rule_data)
 
         new_policy = db.policies.find_one({"_id": policy_id})
         print(f"New policy: {new_policy}")
         new_policy["_id"] = str(new_policy["_id"])
         return new_policy
+    except HTTPException as http_exc:
+        # Re-raise HTTPException to preserve the original status code and detail
+        raise http_exc
     except Exception as e:
-        print(f"Exception: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Catch other unexpected errors
+        print(f"Unexpected Exception in create_policy: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @policy_router.get("/policies/{policy_id}", response_model=Dict[str, Any])
@@ -79,7 +88,9 @@ async def update_policy(policy_id: str, policy: Policy):
         if not db:
             raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        policy_data = policy.dict()
+        # Use model_dump() instead of dict()
+        policy_data = policy.model_dump()
+        # Consider excluding unset fields if needed: policy.model_dump(exclude_unset=True)
         result = await db.policies.update_one({"_id": policy_id}, {"$set": policy_data})
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Policy not found")
@@ -127,7 +138,8 @@ async def process_transaction(transaction: Transaction, mock_db=None) -> Dict[st
                 raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
         # Convert transaction to a dict for evaluation
-        transaction_data = transaction.dict()
+        # Use model_dump() instead of dict()
+        transaction_data = transaction.model_dump()
 
         policies = []
         total_risk_points = 0
@@ -210,7 +222,8 @@ async def create_standard_rule(rule: StandardRule):
         if not db:
             raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        rule_data = rule.dict()
+        # Use model_dump()
+        rule_data = rule.model_dump()
         result = await db.standard_rule.insert_one(rule_data)
         new_rule = await db.standard_rule.find_one({"_id": result.inserted_id})
         return new_rule
@@ -248,7 +261,8 @@ async def update_standard_rule(rule_id: str, rule: StandardRule):
         if not db:
             raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        rule_data = rule.dict()
+        # Use model_dump()
+        rule_data = rule.model_dump()
         result = await db.standard_rule.update_one({"_id": rule_id}, {"$set": rule_data})
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Rule not found")
@@ -289,7 +303,8 @@ async def create_velocity_rule(rule: VelocityRule):
         if not db:
             raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        rule_data = rule.dict()
+        # Use model_dump()
+        rule_data = rule.model_dump()
         result = await db.velocity_rule.insert_one(rule_data)
         new_rule = await db.velocity_rule.find_one({"_id": result.inserted_id})
         return new_rule
@@ -327,7 +342,8 @@ async def update_velocity_rule(rule_id: str, rule: VelocityRule):
         if not db:
             raise HTTPException(status_code=500, detail="Failed to get MongoDB database")
 
-        rule_data = rule.dict()
+        # Use model_dump()
+        rule_data = rule.model_dump()
         result = await db.velocity_rule.update_one({"_id": rule_id}, {"$set": rule_data})
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Rule not found")
