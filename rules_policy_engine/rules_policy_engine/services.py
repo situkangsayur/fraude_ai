@@ -97,7 +97,7 @@ def parse_time_range(time_range: str) -> timedelta:
     else:
         raise ValueError("Invalid time unit")
 
-async def evaluate_velocity_rule(transaction: dict, rule_data: dict) -> bool:
+async def evaluate_velocity_rule(transaction: dict, rule_data: dict, db: Any = None) -> bool:
     """Evaluates a velocity rule dictionary against a transaction dictionary."""
     # Extract necessary fields from rule_data
     time_range_str = rule_data.get("time_range")
@@ -118,8 +118,12 @@ async def evaluate_velocity_rule(transaction: dict, rule_data: dict) -> bool:
 
     # Get DB connection (Consider dependency injection or a shared client)
     # Using a new client per call is inefficient
-    client = MongoClient(MONGODB_URI)
-    db = client[MONGODB_DB_NAME]
+    if db is None:
+        client = MongoClient(MONGODB_URI)
+        db = client[MONGODB_DB_NAME]
+    else:
+        client = None # No need to close client if it was passed in
+
     collection = db.transactions # Assuming transactions are stored here
 
     try:
@@ -184,20 +188,23 @@ async def evaluate_velocity_rule(transaction: dict, rule_data: dict) -> bool:
         print(f"Error evaluating velocity rule: {e}")
         return False
     finally:
-        client.close()
+        if client: # Only close client if it was created in this function
+            client.close()
 
-async def evaluate_policy(transaction, policy: Policy) -> int:
+async def evaluate_policy(transaction, policy: Policy, db: Any = None) -> int:
     """Evaluates a transaction against a policy and returns the total risk points."""
     total_points = 0
-    for rule in policy.get("rules", []):
-        if rule.get("rule_type") == "standard":
-            # Pass the rule dictionary directly
-            if evaluate_standard_rule(transaction, rule):
-                total_points += rule.get("points", 0)
-        elif rule.get("rule_type") == "velocity":
-            # Pass the rule dictionary directly
-            if await evaluate_velocity_rule(transaction, rule):
-                total_points += rule.get("points", 0)
+    # Iterate through the rules list directly from the Policy object
+    for rule in policy.rules:
+        # Check the type of the rule object
+        if isinstance(rule, StandardRule):
+            # Pass the rule object and transaction dictionary
+            if evaluate_standard_rule(transaction, rule.model_dump()):
+                total_points += rule.risk_point
+        elif isinstance(rule, VelocityRule):
+            # Pass the rule object, transaction dictionary, and db connection
+            if await evaluate_velocity_rule(transaction, rule.model_dump(), db=db):
+                total_points += rule.risk_point
     return total_points
 
 def determine_risk_level(total_risk_points: int) -> str:

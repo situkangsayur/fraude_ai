@@ -68,7 +68,7 @@ async def fraud_check(transaction_id: str):
     fraud_score = (
         llm_results.get("fraud_score", 0) +
         graph_results.get("proximity_score", 0) +
-        rules_results.get("policy_violations", 0) +
+        rules_results.get("risk_points", 0) +
         neural_net_results.get("fraud_score", 0)
     )
 
