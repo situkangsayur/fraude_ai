@@ -1,32 +1,38 @@
 import logging
 
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from .models import UserNode, GraphRule, Link, Cluster
-from .services import (
-    initialize_graph_db,
+from .services.user_service import (
     create_user_service,
     read_user_service,
     update_user_service,
     delete_user_service,
+)
+from .services.link_service import (
     create_link_service,
     read_link_service,
     delete_link_service,
-    generate_links_service,
+)
+from .services.graph_rule_service import (
     create_graph_rule_service,
     read_graph_rule_service,
     update_graph_rule_service,
     delete_graph_rule_service,
+)
+from .services.transaction_service import (
     analyze_transaction_service,
+)
+from .services.cluster_service import (
     cluster_nodes_service,
     get_all_clusters_service,
     get_cluster_by_id_service,
-    get_all_links_service,
-    get_links_by_cluster_service
 )
+from .services import initialize_graph_db
 
 app = FastAPI()
 
@@ -43,8 +49,9 @@ async def create_user(user: UserNode):
     """
     Creates a new user node in the graph and MongoDB.
     """
+    global db
     try:
-        return await create_user_service(user)
+        return await create_user_service(user, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -56,8 +63,9 @@ async def read_user(user_id: str):
     """
     Reads a user node by ID from MongoDB.
     """
+    global db
     try:
-        return await read_user_service(user_id)
+        return await read_user_service(user_id, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -69,8 +77,10 @@ async def update_user(user_id: str, user: UserNode):
     """
     Updates a user node by ID in MongoDB.
     """
+    global db
     try:
-        return await update_user_service(user_id, user)
+        user_data = user.model_dump(exclude={"id"})
+        return await update_user_service(user_id, user_data, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -82,8 +92,9 @@ async def delete_user(user_id: str):
     """
     Deletes a user node by ID from MongoDB and the graph.
     """
+    global db
     try:
-        return await delete_user_service(user_id)
+        return await delete_user_service(user_id, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -95,8 +106,9 @@ async def create_link(link: Link):
     """
     Creates a new link in the graph and MongoDB.
     """
+    global db
     try:
-        return await create_link_service(link)
+        return await create_link_service(link, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -107,8 +119,9 @@ async def read_link(source_id: str, target_id: str):
     """
     Reads a link by source and target ID from MongoDB.
     """
+    global db
     try:
-        return await read_link_service(source_id, target_id)
+        return await read_link_service(source_id, target_id, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -119,8 +132,9 @@ async def delete_link(source_id: str, target_id: str):
     """
     Deletes a link by source and target ID from MongoDB and the graph.
     """
+    global db
     try:
-        return await delete_link_service(source_id, target_id)
+        return await delete_link_service(source_id, target_id, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -144,8 +158,9 @@ async def create_graph_rule(rule: GraphRule):
     """
     Creates a new graph rule in MongoDB.
     """
+    global db
     try:
-        return await create_graph_rule_service(rule)
+        return await create_graph_rule_service(rule, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -156,8 +171,9 @@ async def read_graph_rule(rule_id: str):
     """
     Reads a graph rule by ID from MongoDB.
     """
+    global db
     try:
-        return await read_graph_rule_service(rule_id)
+        return await read_graph_rule_service(rule_id, db)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -169,10 +185,12 @@ async def update_graph_rule(rule_id: str, rule: GraphRule):
     Updates a graph rule by ID in MongoDB.
     """
     try:
-        return await update_graph_rule_service(rule_id, rule)
+        rule_data = rule.model_dump(exclude={"id"})
+        return await update_graph_rule_service(rule_id, rule_data)
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.exception(f"Error in update_graph_rule_service: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/graph_rules/{rule_id}", response_model=Dict[str, Any])

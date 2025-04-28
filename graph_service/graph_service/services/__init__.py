@@ -5,7 +5,7 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 from common.config import MONGODB_URI, MONGODB_DB_NAME
 from common.mongodb_utils import get_mongodb_client, get_mongodb_database
-from .models import UserNode, GraphRule, Link # Import models from the same package
+from ..models import UserNode, GraphRule, Link # Import models from the same package
 
 # Global graph and database objects
 graph = nx.Graph()
@@ -21,12 +21,11 @@ async def initialize_graph_db(db_instance=None):
     global graph, db
     if db_instance:
         db = db_instance
-    elif 'pytest' in sys.modules:
+    elif os.environ.get("TESTING") == "True":
         # Use mongomock for testing if no db_instance is provided
         from mongomock import MongoClient
         client = MongoClient()
         db = client['fraud_detection']
-        await asyncio.sleep(0.01) # Allow event loop to run
     else:
         client = get_mongodb_client(MONGODB_URI)
         if client is None:
