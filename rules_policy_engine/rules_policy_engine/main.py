@@ -22,8 +22,13 @@ async def startup_event():
             return
 
     db = get_mongodb_database(client, MONGODB_DB_NAME)
-    if not db:
+    if db is None:
         print("Failed to get MongoDB database")
-        return
+        os._exit(1)
 
-    print("Connected to MongoDB")
+    
+        print("Connected to MongoDB")
+    
+    @app.get("/health")
+    async def health_check():
+        return {"status": "ok"}

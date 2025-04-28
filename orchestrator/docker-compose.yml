@@ -3,7 +3,7 @@ services:
   app:
     build:
       context: ..
-      dockerfile: rules_policy_engine/Dockerfile
+      dockerfile: orchestrator/Dockerfile
       args:
         PROJECT_VERSION: 0.1.0
         COMMON_VERSION: 0.1.0

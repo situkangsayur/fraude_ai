@@ -234,3 +234,7 @@ async def train_neural_network(params: TrainingParams):
         return {"message": "Model training initiated. Check logs for progress."}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}

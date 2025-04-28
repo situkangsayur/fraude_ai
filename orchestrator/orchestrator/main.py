@@ -81,6 +81,9 @@ async def fraud_check(transaction_id: str):
         "neural_net_results": neural_net_results,
     }
 
+@app.get("/health")
+async def health_check():
+   return {"status": "ok"}
 # --- API Endpoints for Policy Management ---
 @app.get("/policies/")
 async def list_policies():

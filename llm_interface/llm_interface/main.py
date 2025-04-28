@@ -41,3 +41,11 @@ async def analyze_transaction(request: AnalysisRequest) -> Dict[str, Any]:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}

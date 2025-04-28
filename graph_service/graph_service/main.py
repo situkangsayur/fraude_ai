@@ -254,6 +254,10 @@ async def get_cluster_by_id(cluster_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 @app.get("/links/", response_model=List[Link])
 async def get_all_links(cluster_id: Optional[str] = None):
     """

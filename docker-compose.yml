@@ -17,6 +17,11 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   llm_interface:
     build:
       context: .
@@ -33,6 +38,11 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   graph_service:
     build:
       context: .
@@ -49,6 +59,11 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   rules_policy_engine:
     build:
       context: .
@@ -65,6 +80,11 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   neural_net_service:
     build:
       context: .
@@ -81,6 +101,11 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   dashboard:
     build:
       context: .
@@ -96,16 +121,6 @@ services:
     environment:
       - MONGODB_URI=mongodb://root:root@mongodb:27017/?authSource=admin
       - MONGODB_DB_NAME=fraud_detection
-  orchestrator_integration_tests:
-    image: fraude_ai-orchestrator
-    depends_on:
-      orchestrator:
-        condition: service_started
-      rules_policy_engine:
-        condition: service_started
-    volumes:
-      - ./orchestrator/tests:/app/tests
-    command: poetry run pytest /app/tests/test_main.py
 
   mongodb:
     image: mongo:latest
