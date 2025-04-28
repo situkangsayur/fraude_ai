@@ -27,8 +27,11 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Initialize poetry without creating pyproject.toml in the image layer
 # Dependencies will be added via the tar.gz packages
-RUN poetry init --no-interaction --name $PROJECT_NAME --dependency streamlit
+# Copy and install the main service package
+# Assumes build context is the monorepo root
+COPY ${PROJECT_NAME}/dist/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz .
 
+RUN poetry init --no-interaction --name $PROJECT_NAME --dependency streamlit
 # Copy and install the common package first
 # Assumes build context is the monorepo root
 COPY common/dist/common-${COMMON_VERSION}.tar.gz .
@@ -36,9 +39,10 @@ RUN poetry add /app/common-${COMMON_VERSION}.tar.gz
 
 # Copy and install the main service package
 # Assumes build context is the monorepo root
-COPY ${PROJECT_NAME}/dist/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz .
-RUN poetry add /app/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz
+RUN poetry add /app/common-${COMMON_VERSION}.tar.gz
+#RUN poetry add /app/${PROJECT_NAME}-${PROJECT_VERSION}.tar.gz
+RUN poetry install
 
 # Command to run the service (Streamlit)
 # Note: Assuming main.py is directly inside the dashboard package after installation
-CMD ["poetry", "run", "streamlit", "run", "dashboard/main.py"]
+CMD ["poetry", "run", "streamlit", "run", "dashboard/dashboard/main.py"]

@@ -4,6 +4,7 @@ import httpx
 import asyncio
 import threading
 from typing import Dict, Any
+from common.config import RULES_POLICY_ENGINE_URL
 
 st.title("Fraud Detection Dashboard")
 
@@ -15,7 +16,7 @@ async def get_fraud_check(transaction_id: str) -> Dict[str, Any]:
     try:
         async def fetch_data():
             async with httpx.AsyncClient() as client:
-                response = await client.get(f"{API_BASE_URL}/fraud_check/{transaction_id}")
+                response = await client.get(f"{RULES_POLICY_ENGINE_URL}/fraud_check/{transaction_id}")
                 response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
                 return response.json()
 
@@ -24,12 +25,38 @@ async def get_fraud_check(transaction_id: str) -> Dict[str, Any]:
         st.error(f"HTTP error fetching fraud check for transaction {transaction_id}: {e}")
         return None
     except httpx.RequestError as e:
-        st.error(f"Request error fetching fraud check for transaction {transaction_id}: {e}")
+        st.error(f"HTTP error fetching fraud check for transaction {transaction_id}: {e}")
+        return None
+
+async def get_transactions() -> Dict[str, Any]:
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{RULES_POLICY_ENGINE_URL}/transactions/")
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        st.error(f"HTTP error fetching transactions: {e}")
+        return None
+    except httpx.RequestError as e:
+        st.error(f"HTTP error fetching transactions: {e}")
+        return None
+
+async def get_users() -> Dict[str, Any]:
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{RULES_POLICY_ENGINE_URL}/users/")
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        st.error(f"HTTP error fetching users: {e}")
+        return None
+    except httpx.RequestError as e:
+        st.error(f"HTTP error fetching users: {e}")
         return None
 
 # --- Sidebar for navigation ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Choose a page", ["Transaction Review", "Policy Management", "Graph Management", "LLM Prompt Management", "Training Data Management"])
+page = st.sidebar.radio("Choose a page", ["Transaction Review", "Policy Management", "Graph Management", "LLM Prompt Management", "Training Data Management", "User Management", "Add Transaction", "Transaction List", "User List", "LLM Report", "LLM Rule Recommendation"])
 
 # --- Main content area ---
 if page == "Transaction Review":
@@ -37,10 +64,12 @@ if page == "Transaction Review":
     transaction_id = st.text_input("Enter Transaction ID:")
     if st.button("Check Fraud"):
         if transaction_id:
-            fraud_data = get_fraud_check(transaction_id)
-            if fraud_data:
-                st.subheader(f"Fraud Check Results for Transaction {transaction_id}")
-                st.json(fraud_data)
+            async def check_fraud():
+                fraud_data = await get_fraud_check(transaction_id)
+                if fraud_data:
+                    st.subheader(f"Fraud Check Results for Transaction {transaction_id}")
+                    st.json(fraud_data)
+            asyncio.run(check_fraud())
         else:
             st.warning("Please enter a Transaction ID.")
 
@@ -72,10 +101,9 @@ elif page == "Policy Management":
         if st.button("Create Policy"):
             if policy_name and rules_input:
                 try:
-                    rules_data = eval(rules_input) # Using eval for simplicity, use json.loads in production
+                    rules_data = eval(rules_input) # Use json.loads in production
                     policy_data = {"name": policy_name, "description": policy_description, "rules": rules_data}
                     # Run the async function using asyncio.run or similar in a real app context
-                    # For Streamlit, we can use a simple thread or a library like streamlit-asyncio
                     import threading
                     import asyncio
 
@@ -212,14 +240,14 @@ elif page == "Policy Management":
                         asyncio.set_event_loop(loop)
                         return loop.run_until_complete(coro)
 
-                    rule = run_async_in_thread(read_standard_rule(rule_id_input))
-                    if rule:
-                        st.subheader("Standard Rule Details:")
-                        st.json(rule)
-                    else:
-                        st.warning("Standard Rule not found.")
+                rule = run_async_in_thread(read_standard_rule(rule_id_input))
+                if rule:
+                    st.subheader("Standard Rule Details:")
+                    st.json(rule)
                 else:
-                    st.warning("Please enter a Standard Rule ID.")
+                    st.warning("Standard Rule not found.")
+            else:
+                st.warning("Please enter a Standard Rule ID.")
 
         elif rule_operation == "Update":
             st.write("Update Standard Rule by ID")
@@ -244,10 +272,10 @@ elif page == "Policy Management":
                             st.json(result)
                         else:
                             st.error("Failed to update standard rule.")
-                    except Exception as e:
-                        st.error(f"Error parsing updated standard rule data JSON or updating rule: {e}")
-                else:
-                    st.warning("Please provide Standard Rule ID and updated rule data.")
+                except Exception as e:
+                    st.error(f"Error parsing updated standard rule data JSON or updating rule: {e}")
+            else:
+                st.warning("Please provide Standard Rule ID and updated rule data.")
 
         elif rule_operation == "Delete":
             st.write("Delete Standard Rule by ID")
@@ -262,14 +290,14 @@ elif page == "Policy Management":
                         asyncio.set_event_loop(loop)
                         return loop.run_until_complete(coro)
 
-                    result = run_async_in_thread(delete_standard_rule(rule_id_input))
-                    if result:
-                        st.success("Standard Rule deleted successfully!")
-                        st.json(result)
-                    else:
-                        st.error("Failed to delete standard rule.")
+                result = run_async_in_thread(delete_standard_rule(rule_id_input))
+                if result:
+                    st.success("Standard Rule deleted successfully!")
+                    st.json(result)
                 else:
-                    st.warning("Please enter a Standard Rule ID.")
+                    st.error("Failed to delete standard rule.")
+            else:
+                st.warning("Please enter a Standard Rule ID.")
 
     elif rule_type == "Velocity Rule":
         if rule_operation == "Create":
@@ -312,14 +340,14 @@ elif page == "Policy Management":
                         asyncio.set_event_loop(loop)
                         return loop.run_until_complete(coro)
 
-                    rule = run_async_in_thread(read_velocity_rule(rule_id_input))
-                    if rule:
-                        st.subheader("Velocity Rule Details:")
-                        st.json(rule)
-                    else:
-                        st.warning("Velocity Rule not found.")
+                rule = run_async_in_thread(read_velocity_rule(rule_id_input))
+                if rule:
+                    st.subheader("Velocity Rule Details:")
+                    st.json(rule)
                 else:
-                    st.warning("Please enter a Velocity Rule ID.")
+                    st.warning("Velocity Rule not found.")
+            else:
+                st.warning("Please enter a Velocity Rule ID.")
 
         elif rule_operation == "Update":
             st.write("Update Velocity Rule by ID")
@@ -344,10 +372,10 @@ elif page == "Policy Management":
                             st.json(result)
                         else:
                             st.error("Failed to update velocity rule.")
-                    except Exception as e:
-                        st.error(f"Error parsing updated velocity rule data JSON or updating rule: {e}")
-                else:
-                    st.warning("Please provide Velocity Rule ID and updated rule data.")
+                except Exception as e:
+                    st.error(f"Error parsing updated velocity rule data JSON or updating rule: {e}")
+            else:
+                st.warning("Please provide Velocity Rule ID and updated rule data.")
 
         elif rule_operation == "Delete":
             st.write("Delete Velocity Rule by ID")
@@ -362,52 +390,309 @@ elif page == "Policy Management":
                         asyncio.set_event_loop(loop)
                         return loop.run_until_complete(coro)
 
-                    result = run_async_in_thread(delete_velocity_rule(rule_id_input))
-                    if result:
-                        st.success("Velocity Rule deleted successfully!")
-                        st.json(result)
-                    else:
-                        st.error("Failed to delete velocity rule.")
+                result = run_async_in_thread(delete_velocity_rule(rule_id_input))
+                if result:
+                    st.success("Velocity Rule deleted successfully!")
+                    st.json(result)
                 else:
-                    st.warning("Please enter a Velocity Rule ID.")
+                    st.error("Failed to delete velocity rule.")
+            else:
+                st.warning("Please enter a Velocity Rule ID.")
 
-elif page == "Graph Management":
-    st.header("Graph Management")
-    # Fetch and display graph rules and nodes from the orchestrator
-    graph_rules = get_graph_rules()
-    nodes = get_nodes()
-    st.write("Graph Rules:", graph_rules)
-    st.write("Nodes:", nodes)
-    # Add UI elements for CRUD graph rules and nodes
-    st.write("Functionality to Create, Read, Update, and Delete graph rules and nodes will be implemented here.")
+    elif page == "Graph Management":
+        st.header("Graph Management")
+        # Fetch and display graph rules and nodes from the orchestrator
+        graph_rules = get_graph_rules()
+        nodes = get_nodes()
+        st.write("Graph Rules:", graph_rules)
+        st.write("Nodes:", nodes)
+        # Add UI elements for CRUD graph rules and nodes
+        st.write("Functionality to Create, Read, Update, and Delete graph rules and nodes will be implemented here.")
 
-elif page == "LLM Prompt Management":
-    st.header("LLM Prompt Management")
-    # Add UI elements to update the LLM prompt and view prompt history
-    st.write("Functionality to update the LLM prompt and view prompt history will be implemented here.")
+    elif page == "LLM Prompt Management":
+        st.header("LLM Prompt Management")
+        # Add UI elements to update the LLM prompt and view prompt history
+        st.write("Functionality to update the LLM prompt and view prompt history will be implemented here.")
 
-elif page == "Training Data Management":
-    st.header("Training Data Management")
-    # Add UI elements for re-running training and getting evaluation metrics
-    st.write("Functionality to re-run training and get evaluation metrics will be implemented here.")
+    elif page == "Training Data Management":
+        st.header("Training Data Management")
+        # Add UI elements for re-running training and getting evaluation metrics
+        st.write("Functionality to re-run training and get evaluation metrics will be implemented here.")
+
+    elif page == "User Management":
+        st.header("User Management")
+        # Fetch and display users from the rules_policy_engine
+        async def display_users():
+            users = await get_users()
+            if users:
+                st.write("Users:")
+                st.json(users)
+            else:
+                st.write("No users found.")
+        asyncio.run(display_users())
+elif page == "LLM Rule Recommendation":
+        st.header("LLM Rule Recommendation")
+
+        async def get_llm_recommendations():
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get("http://llm_interface:8000/recommendations")  # Assuming llm_interface is named 'llm_interface'
+                    response.raise_for_status()
+                    recommendations = response.json()
+                    return recommendations
+            except httpx.HTTPStatusError as e:
+                st.error(f"HTTP error: {e}")
+                return None
+            except httpx.RequestError as e:
+                st.error(f"Request error: {e}")
+                return None
+
+        recommendations = asyncio.run(get_llm_recommendations())
+
+        if recommendations:
+            st.subheader("Rules Policy Engine Recommendations:")
+            rules_engine_recommendations = recommendations.get("rules_policy_engine")
+            if rules_engine_recommendations:
+                st.json(rules_engine_recommendations)
+                if st.button("Add to Rules Policy Engine"):
+                    async def add_rules_engine_rule(rule_data: Dict[str, Any]):
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                if rule_data.get("rule_type") == "standard":
+                                    response = await client.post(f"{RULES_POLICY_ENGINE_URL}/standard_rules/", json=rule_data)
+                                elif rule_data.get("rule_type") == "velocity":
+                                    response = await client.post(f"{RULES_POLICY_ENGINE_URL}/velocity_rules/", json=rule_data)
+                                else:
+                                    st.error("Unknown rule type.")
+                                    return
+
+                                response.raise_for_status()
+                                result = response.json()
+                                st.success("Rule added to Rules Policy Engine successfully!")
+                                st.json(result)
+                        except httpx.HTTPStatusError as e:
+                            st.error(f"HTTP error: {e}")
+                        except httpx.RequestError as e:
+                            st.error(f"Request error: {e}")
+                        except Exception as e:
+                            st.error(f"An unexpected error occurred: {e}")
+
+                    asyncio.run(add_rules_engine_rule(rules_engine_recommendations))
+            else:
+                st.write("No recommendations found for Rules Policy Engine.")
+
+            st.subheader("Graph Service Recommendations:")
+            graph_service_recommendations = recommendations.get("graph_service")
+            if graph_service_recommendations:
+                st.json(graph_service_recommendations)
+                if st.button("Add to Graph Service"):
+                    async def add_graph_service_rule(rule_data: Dict[str, Any]):
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                response = await client.post("http://graph_service:8000/graph_rules/", json=rule_data)
+                                response.raise_for_status()
+                                result = response.json()
+                                st.success("Rule added to Graph Service successfully!")
+                                st.json(result)
+                        except httpx.HTTPStatusError as e:
+                            st.error(f"HTTP error: {e}")
+                        except httpx.RequestError as e:
+                            st.error(f"Request error: {e}")
+                        except Exception as e:
+                            st.error(f"An unexpected error occurred: {e}")
+
+                    asyncio.run(add_graph_service_rule(graph_service_recommendations))
+            else:
+                st.write("No recommendations found for Graph Service.")
+elif page == "LLM Report":
+        st.header("LLM Report")
+
+        async def get_llm_report():
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get("http://llm_interface:8000/report")  # Assuming llm_interface is named 'llm_interface'
+                    response.raise_for_status()
+                    report = response.json()
+                    return report
+            except httpx.HTTPStatusError as e:
+                st.error(f"HTTP error: {e}")
+                return None
+            except httpx.RequestError as e:
+                st.error(f"Request error: {e}")
+                return None
+
+        report = asyncio.run(get_llm_report())
+
+        if report:
+            st.subheader("Fraud Information:")
+            st.write(f"True Positives: {report.get('true_positives')}")
+            st.write(f"False Positives: {report.get('false_positives')}")
+            st.write(f"True Negatives: {report.get('true_negatives')}")
+            st.write(f"False Negatives: {report.get('false_negatives')}")
+            st.write(f"Transaction Number: {report.get('transaction_number')}")
+
+            st.subheader("Fraud Cluster (Graph Service):")
+            st.json(report.get("fraud_cluster"))
+        else:
+            st.error("Failed to retrieve LLM report.")
+elif page == "User List":
+        st.header("User List")
+
+        async def get_all_users():
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"{RULES_POLICY_ENGINE_URL}/users")
+                    response.raise_for_status()
+                    users = response.json()
+                    return users
+            except httpx.HTTPStatusError as e:
+                st.error(f"HTTP error: {e}")
+                return None
+            except httpx.RequestError as e:
+                st.error(f"Request error: {e}")
+                return None
+
+        users = asyncio.run(get_all_users())
+
+        if users:
+            for user in users:
+                user_id = user.get("user_id")
+                if user_id:
+                    st.markdown(f"<a href='/?page=User%20Profile&user_id={user_id}'>{user_id}</a>", unsafe_allow_html=True)
+                else:
+                    st.write(f"User: {user}")
+        else:
+            st.warning("No users found.")
+elif page == "Transaction List":
+        st.header("Transaction List")
+        
+        async def get_all_transactions():
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"{RULES_POLICY_ENGINE_URL}/transactions")
+                    response.raise_for_status()
+                    transactions = response.json()
+                    return transactions
+            except httpx.HTTPStatusError as e:
+                st.error(f"HTTP error: {e}")
+                return None
+            except httpx.RequestError as e:
+                st.error(f"Request error: {e}")
+                return None
+
+        transactions = asyncio.run(get_all_transactions())
+
+        if transactions:
+            df = pd.DataFrame(transactions)
+            st.dataframe(df)
+        else:
+            st.warning("No transactions found.")
+elif page == "Add Transaction":
+        st.header("Add Transaction")
+        transaction_id = st.text_input("Transaction ID:")
+        user_id = st.text_input("User ID:")
+        amount = st.number_input("Amount:")
+        description = st.text_area("Description:")
+
+        if st.button("Submit Transaction"):
+            if transaction_id and user_id and amount:
+                # Send transaction data to rules_policy_engine and graph_service
+                transaction_data = {
+                    "transaction_id": transaction_id,
+                    "user_id": user_id,
+                    "amount": amount,
+                    "description": description,
+                }
+                
+                async def send_transaction():
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            rules_response = await client.post(f"{RULES_POLICY_ENGINE_URL}/transactions", json=transaction_data)
+                            rules_response.raise_for_status()
+                            rules_result = rules_response.json()
+
+                            graph_response = await client.post("http://graph_service:8000/analyze", json=transaction_data)  # Assuming graph_service is named 'graph_service'
+                            graph_response.raise_for_status()
+                            graph_result = graph_response.json()
+
+                            return rules_result, graph_result
+                    except httpx.HTTPStatusError as e:
+                        st.error(f"HTTP error: {e}")
+                        return None, None
+                    except httpx.RequestError as e:
+                        st.error(f"HTTP error: {e}")
+                        return None, None
+
+                rules_result, graph_result = asyncio.run(send_transaction())
+
+                if rules_result and graph_result:
+                    st.subheader("Rules Policy Engine Result:")
+                    st.json(rules_result)
+                    st.subheader("Graph Service Result:")
+                    st.json(graph_result)
+                else:
+                    st.error("Failed to send transaction data to services.")
+            else:
+                st.warning("Please fill in all required fields.")
+elif page == "User Profile":
+        st.header("User Profile")
+        user_id = st.query_params.get("user_id")
+
+        if user_id:
+            async def get_user_profile(user_id: str):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        rules_response = await client.get(f"{RULES_POLICY_ENGINE_URL}/users/{user_id}/risk_info")
+                        rules_response.raise_for_status()
+                        rules_result = rules_response.json()
+
+                        # Assuming graph_service also has user profile endpoint
+                        graph_response = await client.get(f"http://graph_service:8000/users/{user_id}")
+                        graph_response.raise_for_status()
+                        graph_result = graph_response.json()
+
+                        return rules_result, graph_result
+                except httpx.HTTPStatusError as e:
+                    st.error(f"HTTP error: {e}")
+                    return None, None
+                except httpx.RequestError as e:
+                    st.error(f"HTTP error: {e}")
+                    return None, None
+
+            rules_result, graph_result = asyncio.run(get_user_profile(user_id))
+
+            if rules_result and graph_result:
+                st.subheader(f"User ID: {user_id}")
+                st.subheader("Risk Information (Rules Policy Engine):")
+                st.json(rules_result)
+                st.subheader("Graph Service Information:")
+                st.json(graph_result)
+
+                # Placeholder for bank confirmation data
+                st.subheader("Bank Confirmation:")
+                st.write("No bank confirmation data available.")
+            else:
+                st.error("Failed to retrieve user profile data.")
+        else:
+            st.warning("No user ID specified.")
 
 @st.cache_data
 def get_policies():
     try:
-        response = httpx.get(f"{API_BASE_URL}/policies/")
+        response = httpx.get(f"{RULES_POLICY_ENGINE_URL}/policies/")
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as e:
         st.error(f"HTTP error fetching policies: {e}")
         return None
     except httpx.RequestError as e:
-        st.error(f"Request error fetching policies: {e}")
+        st.error(f"HTTP error fetching policies: {e}")
         return None
 
 @st.cache_data
 def get_graph_rules():
     try:
-        response = httpx.get(f"{API_BASE_URL}/graph_rules/")
+        response = httpx.get(f"{RULES_POLICY_ENGINE_URL}/graph_rules/")
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as e:
@@ -420,181 +705,12 @@ def get_graph_rules():
 @st.cache_data
 def get_nodes():
     try:
-        response = httpx.get(f"{API_BASE_URL}/nodes/")
+        response = httpx.get(f"{RULES_POLICY_ENGINE_URL}/nodes/")
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as e:
         st.error(f"HTTP error fetching nodes: {e}")
         return None
     except httpx.RequestError as e:
-        st.error(f"Request error fetching nodes: {e}")
-        return None
-# --- Functions to interact with Rules Policy Engine via Orchestrator ---
-
-async def create_policy(policy_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{API_BASE_URL}/policies/", json=policy_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error creating policy: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error creating policy: {e}")
-async def read_policy(policy_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_BASE_URL}/policies/{policy_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error reading policy {policy_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error reading policy {policy_id}: {e}")
-        return None
-
-async def update_policy(policy_id: str, policy_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.put(f"{API_BASE_URL}/policies/{policy_id}", json=policy_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error updating policy {policy_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error updating policy {policy_id}: {e}")
-        return None
-
-async def delete_policy(policy_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(f"{API_BASE_URL}/policies/{policy_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error deleting policy {policy_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error deleting policy {policy_id}: {e}")
-        return None
-
-async def create_standard_rule(rule_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{API_BASE_URL}/standard_rules/", json=rule_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error creating standard rule: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error creating standard rule: {e}")
-        return None
-
-async def read_standard_rule(rule_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_BASE_URL}/standard_rules/{rule_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error reading standard rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error reading standard rule {rule_id}: {e}")
-        return None
-
-async def update_standard_rule(rule_id: str, rule_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.put(f"{API_BASE_URL}/standard_rules/{rule_id}", json=rule_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error updating standard rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error updating standard rule {rule_id}: {e}")
-        return None
-
-async def delete_standard_rule(rule_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(f"{API_BASE_URL}/standard_rules/{rule_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error deleting standard rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error deleting standard rule {rule_id}: {e}")
-        return None
-
-async def create_velocity_rule(rule_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{API_BASE_URL}/velocity_rules/", json=rule_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error creating velocity rule: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error creating velocity rule: {e}")
-        return None
-
-async def read_velocity_rule(rule_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_BASE_URL}/velocity_rules/{rule_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error reading velocity rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error reading velocity rule {rule_id}: {e}")
-        return None
-
-async def update_velocity_rule(rule_id: str, rule_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.put(f"{API_BASE_URL}/velocity_rules/{rule_id}", json=rule_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error updating velocity rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error updating velocity rule {rule_id}: {e}")
-        return None
-
-async def delete_velocity_rule(rule_id: str) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(f"{API_BASE_URL}/velocity_rules/{rule_id}")
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error deleting velocity rule {rule_id}: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error deleting velocity rule {rule_id}: {e}")
-        return None
-
-async def process_transaction_api(transaction_data: Dict[str, Any]) -> Dict[str, Any] | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{API_BASE_URL}/transactions", json=transaction_data)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        st.error(f"HTTP error processing transaction: {e}")
-        return None
-    except httpx.RequestError as e:
-        st.error(f"Request error processing transaction: {e}")
-        return None
+        st.error(f"HTTP error fetching nodes: {e}")
         return None

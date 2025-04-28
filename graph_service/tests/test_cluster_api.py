@@ -20,8 +20,8 @@ def test_client():
 @pytest.mark.asyncio
 async def test_get_all_clusters(mock_db, test_client):
     # Seed the database with sample data
-    db = await mock_db
-    await db.clusters.insert_many([
+    db = mock_db
+    db.clusters.insert_many([
         {"members": ["user1", "user2"], "description": "Sample cluster 1"},
         {"members": ["user3", "user4"], "description": "Sample cluster 2"},
     ])
@@ -33,7 +33,7 @@ async def test_get_all_clusters(mock_db, test_client):
 @pytest.mark.asyncio
 async def test_get_cluster_by_id(mock_db, test_client):
     # Seed the database with sample data
-    db = await mock_db
+    db = mock_db
     db.clusters.insert_many([
         {"members": ["user1", "user2"], "description": "Sample cluster 1"},
         {"members": ["user3", "user4"], "description": "Sample cluster 2"},
@@ -59,7 +59,7 @@ async def test_get_cluster_by_id_not_found(mock_db, test_client):
 @pytest.mark.asyncio
 async def test_get_all_links(mock_db, test_client):
     # Seed the database with sample data
-    db = await mock_db
+    db = mock_db
     db.links.insert_many([
         {"source": "user1", "target": "user3", "type": "test_link", "weight": 0.5, "reasons": [], "rule_ids": []},
         {"source": "user2", "target": "user4", "type": "test_link", "weight": 0.7, "reasons": [], "rule_ids": []},
@@ -73,7 +73,7 @@ async def test_get_all_links(mock_db, test_client):
 @pytest.mark.asyncio
 async def test_get_links_by_cluster(mock_db, test_client):
     # Seed the database with sample data
-    db = await mock_db
+    db = mock_db
     db.clusters.insert_many([
         {"members": ["user1", "user2"], "description": "Sample cluster 1"},
         {"members": ["user3", "user4"], "description": "Sample cluster 2"},

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["Hendri Karisma <situkangsayur@gmail.com>"]
 readme = "README.md"
+include = ["README.md", "pyproject.toml", "rules_policy_engine"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -16,7 +17,7 @@ httpx = "^0.28.1"
 python-dotenv = "^1.1.0"
 mongomock = "^4.3.0"
 pytest-asyncio = "^0.26.0"
-common = {path = "../common/dist/common-0.1.0-py3-none-any.whl"}
+common = {path = "../common"}
 
 
 [tool.poetry.group.dev.dependencies]

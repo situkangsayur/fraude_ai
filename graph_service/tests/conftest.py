@@ -34,6 +34,7 @@ async def mock_db():
             "phone_number": "081234567890",
             "is_fraud": True
         })
-    await initialize_graph_db(db)
+    if os.environ.get("TESTING") != "True":
+        await initialize_graph_db(db)
     os.environ["TESTING"] = "True"
     return db

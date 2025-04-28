@@ -14,6 +14,10 @@ transformers = {version = "^4.51.3", source = "aliyun"}
 langchain = {version = "^0.3.23", source = "aliyun"}
 httpx = {version = "^0.28.1", source = "aliyun"}
 common = {path = "../common/dist/common-0.1.0.tar.gz"}
+langchain-google-genai = "^0.9.0"
+langgraph = "^0.1.0"
+faiss-cpu = "^1.7.4"
+pdfminer-six = "*"
 
 
 [[tool.poetry.source]]
